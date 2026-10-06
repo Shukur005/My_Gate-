@@ -184,15 +184,25 @@ export interface FlatDetail {
   flatNumber: string;
   wing: string;
   floor: number;
+  propertyAddress?: string;
   ownerName: string;
   occupancyStatus: 'Owner' | 'Tenant' | 'Vacant';
   phone: string;
   email: string;
   vehicles: { type: 'Car' | 'Bike'; number: string; makeModel?: string; color?: string; fastTag?: string }[];
   familyMembersCount: number;
+  familyMembers?: FlatFamilyMember[];
   outstandingDues: number;
   emergencyContacts?: EmergencyContact[];
   profileDetails?: FlatProfileDetails;
+}
+
+export interface FlatFamilyMember {
+  id: string;
+  name: string;
+  relationship: string;
+  age?: number;
+  phone?: string;
 }
 
 export interface EmergencyAlert {

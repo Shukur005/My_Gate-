@@ -1,0 +1,464 @@
+import React, { useState } from 'react';
+import {
+  Building2,
+  Check,
+  ChevronRight,
+  Home,
+  MapPin,
+  Search,
+  UserRound,
+  Users,
+} from 'lucide-react';
+import { useSociety } from '../../context/SocietyContext';
+import { FlatDetail } from '../../types';
+import { AddApartmentModal } from './AddApartmentModal';
+import { AddMemberFlatModal } from './AddMemberFlatModal';
+
+type OccupancyFilter = 'all' | 'occupied' | 'Owner' | 'Tenant' | 'Vacant';
+
+const occupancyLabel = (flat: FlatDetail) =>
+  flat.occupancyStatus === 'Vacant' ? 'Available' : flat.occupancyStatus === 'Owner' ? 'Owner occupied' : 'Tenant occupied';
+
+export const ApartmentCensusSection: React.FC = () => {
+  const { flats, markFlatVacant, updateApartmentAddress } = useSociety();
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<OccupancyFilter>('all');
+  const [selectedFlat, setSelectedFlat] = useState<FlatDetail | null>(null);
+  const [addressDraft, setAddressDraft] = useState('');
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [showAddApartment, setShowAddApartment] = useState(false);
+  const [showAssignResident, setShowAssignResident] = useState(false);
+
+  const occupiedFlats = flats.filter((flat) => flat.occupancyStatus !== 'Vacant');
+  const vacantCount = flats.length - occupiedFlats.length;
+  const ownerCount = flats.filter((flat) => flat.occupancyStatus === 'Owner').length;
+  const tenantCount = flats.filter((flat) => flat.occupancyStatus === 'Tenant').length;
+  const normalizedSearch = search.trim().toLowerCase();
+  const visibleFlats = flats
+    .filter((flat) => {
+      const matchesFilter =
+        filter === 'all' ||
+        (filter === 'occupied' ? flat.occupancyStatus !== 'Vacant' : flat.occupancyStatus === filter);
+      const matchesSearch =
+        !normalizedSearch ||
+        [flat.flatNumber, flat.wing, flat.ownerName, flat.phone, flat.propertyAddress]
+          .some((value) => value?.toLowerCase().includes(normalizedSearch));
+      return matchesFilter && matchesSearch;
+    })
+    .sort((a, b) => a.wing.localeCompare(b.wing) || a.floor - b.floor || a.flatNumber.localeCompare(b.flatNumber));
+
+  const handleMarkVacant = (flat: FlatDetail) => {
+    const confirmed = window.confirm(
+      `Mark apartment ${flat.flatNumber} as vacant? Its resident and household details will be removed from this apartment.`
+    );
+    if (!confirmed) return;
+    const result = markFlatVacant(flat.flatNumber);
+    if (!result.success) window.alert(result.message);
+    setSelectedFlat(null);
+  };
+
+  const handleOpenProfile = (flat: FlatDetail) => {
+    setSelectedFlat(flat);
+    setAddressDraft(flat.propertyAddress || '');
+    setEditingAddress(false);
+  };
+
+  const handleSaveAddress = () => {
+    if (!selectedFlat) return;
+    const result = updateApartmentAddress(selectedFlat.flatNumber, addressDraft);
+    if (!result.success) {
+      window.alert(result.message);
+      return;
+    }
+    setSelectedFlat({ ...selectedFlat, propertyAddress: addressDraft.trim() });
+    setEditingAddress(false);
+  };
+
+  const stats = [
+    { label: 'Total apartments', value: flats.length, icon: Building2, color: 'text-slate-700', tint: 'bg-slate-100' },
+    { label: 'Occupied', value: occupiedFlats.length, icon: Users, color: 'text-blue-700', tint: 'bg-blue-50' },
+    { label: 'Available', value: vacantCount, icon: Home, color: 'text-emerald-700', tint: 'bg-emerald-50' },
+    { label: 'Owners · Tenants', value: `${ownerCount} · ${tenantCount}`, icon: UserRound, color: 'text-violet-700', tint: 'bg-violet-50' },
+  ];
+
+  const filters: { id: OccupancyFilter; label: string; count: number }[] = [
+    { id: 'all', label: 'All apartments', count: flats.length },
+    { id: 'occupied', label: 'Occupied', count: occupiedFlats.length },
+    { id: 'Vacant', label: 'Available', count: vacantCount },
+    { id: 'Owner', label: 'Owner occupied', count: ownerCount },
+    { id: 'Tenant', label: 'Tenant occupied', count: tenantCount },
+  ];
+
+  return (
+    <section className="space-y-5" aria-labelledby="apartment-census-title">
+      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Property management</p>
+          <h1 id="apartment-census-title" className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
+            Apartment census
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            Manage apartment inventory, occupancy, resident profiles, and household information.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            onClick={() => setShowAddApartment(true)}
+            type="button"
+          >
+            <Building2 className="h-4 w-4" />
+            Add apartment
+          </button>
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={vacantCount === 0}
+            onClick={() => setShowAssignResident(true)}
+            type="button"
+          >
+            <UserRound className="h-4 w-4" />
+            Assign resident
+          </button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {stats.map(({ label, value, icon: Icon, color, tint }) => (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" key={label}>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-medium text-slate-500 sm:text-sm">{label}</p>
+              <span className={`rounded-lg p-2 ${tint} ${color}`}><Icon className="h-4 w-4" /></span>
+            </div>
+            <p className="mt-3 text-2xl font-bold tracking-tight text-slate-950">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="space-y-4 border-b border-slate-200 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-950">Apartment directory</h2>
+              <p className="mt-1 text-xs text-slate-500">Select a unit to review its address, resident, household, and contact details.</p>
+            </div>
+            <label className="relative block w-full lg:max-w-xs">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                aria-label="Search apartments"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search unit, resident, wing, address"
+                type="search"
+                value={search}
+              />
+            </label>
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Filter apartments by occupancy">
+            {filters.map((item) => (
+              <button
+                aria-pressed={filter === item.id}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  filter === item.id
+                    ? 'border-slate-950 bg-slate-950 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+                key={item.id}
+                onClick={() => setFilter(item.id)}
+                type="button"
+              >
+                {item.label}<span className="ml-1.5 opacity-70">{item.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {visibleFlats.length === 0 ? (
+          <div className="px-6 py-14 text-center">
+            <Building2 className="mx-auto h-8 w-8 text-slate-300" />
+            <h3 className="mt-3 text-sm font-semibold text-slate-800">
+              {flats.length === 0 ? 'No apartments in the inventory yet' : 'No apartments match your search'}
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {flats.length === 0 ? 'Add an apartment to start tracking occupancy.' : 'Try another unit, resident, wing, or address.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[850px] text-left text-sm">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-semibold">Apartment</th>
+                  <th className="px-5 py-3 font-semibold">Address</th>
+                  <th className="px-5 py-3 font-semibold">Resident & household</th>
+                  <th className="px-5 py-3 font-semibold">Occupancy</th>
+                  <th className="px-5 py-3 text-right font-semibold">Dues</th>
+                  <th className="px-5 py-3 text-right font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {visibleFlats.map((flat) => (
+                  <tr className="transition hover:bg-slate-50/70" key={flat.flatNumber}>
+                    <td className="px-5 py-4">
+                      <p className="font-bold text-slate-950">{flat.flatNumber}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{flat.wing} · Floor {flat.floor}</p>
+                    </td>
+                    <td className="max-w-xs px-5 py-4">
+                      <p className="line-clamp-2 text-xs leading-5 text-slate-600">{flat.propertyAddress || 'Address not recorded'}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      {flat.occupancyStatus === 'Vacant' ? (
+                        <p className="text-xs text-slate-400">No resident assigned</p>
+                      ) : (
+                        <>
+                          <p className="font-semibold text-slate-800">{flat.ownerName || 'Resident name not recorded'}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {flat.familyMembersCount} household member{flat.familyMembersCount === 1 ? '' : 's'}
+                          </p>
+                        </>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                        flat.occupancyStatus === 'Vacant' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                      }`}>
+                        {flat.occupancyStatus === 'Vacant' && <Check className="h-3 w-3" />}
+                        {occupancyLabel(flat)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right font-semibold tabular-nums">
+                      <span className={flat.outstandingDues > 0 ? 'text-amber-700' : 'text-slate-500'}>
+                        ₹{flat.outstandingDues.toLocaleString('en-IN')}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <button
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-800 hover:text-emerald-950"
+                        onClick={() => handleOpenProfile(flat)}
+                        type="button"
+                      >
+                        View details <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+          Showing {visibleFlats.length} of {flats.length} apartments
+        </div>
+      </div>
+
+      {selectedFlat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm">
+          <section
+            aria-labelledby="flat-profile-title"
+            aria-modal="true"
+            className="my-6 max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            role="dialog"
+          >
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Apartment profile</p>
+                <h2 id="flat-profile-title" className="mt-1 text-xl font-bold text-slate-950">{selectedFlat.flatNumber}</h2>
+                <p className="mt-1 text-xs text-slate-500">{selectedFlat.wing} · Floor {selectedFlat.floor}</p>
+              </div>
+              <button aria-label="Close apartment details" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setSelectedFlat(null)} type="button">
+                <span aria-hidden="true" className="text-xl leading-none">×</span>
+              </button>
+            </div>
+            <div className="space-y-5 p-5 sm:p-6">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start gap-3">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Apartment address</h3>
+                    {editingAddress ? (
+                      <div className="mt-2 space-y-2">
+                        <textarea
+                          aria-label="Apartment property address"
+                          className="min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                          onChange={(event) => setAddressDraft(event.target.value)}
+                          placeholder="Building, street, locality, city, and postal code"
+                          rows={3}
+                          value={addressDraft}
+                        />
+                        <div className="flex gap-2">
+                          <button className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800" onClick={handleSaveAddress} type="button">
+                            Save address
+                          </button>
+                          <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => { setAddressDraft(selectedFlat.propertyAddress || ''); setEditingAddress(false); }} type="button">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-1 flex items-start justify-between gap-3">
+                        <p className="text-sm leading-6 text-slate-800">{selectedFlat.propertyAddress || 'Address not recorded'}</p>
+                        <button className="shrink-0 text-xs font-semibold text-emerald-800 hover:text-emerald-950" onClick={() => setEditingAddress(true)} type="button">
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Occupancy</h3>
+                  <p className="mt-2 font-semibold text-slate-900">{occupancyLabel(selectedFlat)}</p>
+                  {selectedFlat.occupancyStatus !== 'Vacant' && (
+                    <>
+                      <p className="mt-3 text-sm font-semibold text-slate-800">{selectedFlat.ownerName}</p>
+                      <p className="mt-1 text-xs text-slate-500">{selectedFlat.phone || 'Phone not recorded'}</p>
+                      <p className="mt-1 break-all text-xs text-slate-500">{selectedFlat.email || 'Email not recorded'}</p>
+                    </>
+                  )}
+                </div>
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Household</h3>
+                  <p className="mt-2 text-sm text-slate-800">
+                    {selectedFlat.occupancyStatus === 'Vacant' ? 'No household assigned' : `${selectedFlat.familyMembersCount} member${selectedFlat.familyMembersCount === 1 ? '' : 's'}`}
+                  </p>
+                  {selectedFlat.occupancyStatus !== 'Vacant' && (
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      {selectedFlat.profileDetails?.numberOfAdults ?? 0} adults · {selectedFlat.profileDetails?.numberOfChildren ?? 0} children · {selectedFlat.profileDetails?.seniorCitizens ?? 0} senior citizens
+                      {selectedFlat.profileDetails?.pets ? ` · Pets: ${selectedFlat.profileDetails.pets}` : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {selectedFlat.occupancyStatus !== 'Vacant' && (
+                <>
+                  {selectedFlat.profileDetails?.permanentAddress && (
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Resident’s permanent address</h3>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">{selectedFlat.profileDetails.permanentAddress}</p>
+                    </div>
+                  )}
+
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Additional household details</h3>
+                    <dl className="mt-3 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2">
+                      {([
+                        ['Related person', selectedFlat.profileDetails?.fatherOrSpouseName],
+                        ['Date of birth', selectedFlat.profileDetails?.dateOfBirth],
+                        ['Gender', selectedFlat.profileDetails?.gender],
+                        ['Alternate phone', selectedFlat.profileDetails?.alternatePhone],
+                        ['Occupation', selectedFlat.profileDetails?.occupation],
+                        ['Company', selectedFlat.profileDetails?.company],
+                        ['Ownership type', selectedFlat.profileDetails?.ownershipType],
+                        ['Possession date', selectedFlat.profileDetails?.possessionDate],
+                        ['Move-in date', selectedFlat.profileDetails?.moveInDate],
+                        ['Parking slot', selectedFlat.profileDetails?.parkingSlot],
+                        ['Pets', selectedFlat.profileDetails?.pets],
+                        ['Resident notes', selectedFlat.profileDetails?.notes],
+                        ['Special instructions', selectedFlat.profileDetails?.specialInstructions],
+                        ['Documents', selectedFlat.profileDetails?.documents?.join(', ')],
+                      ] as const).filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => (
+                        <div key={label}>
+                          <dt className="text-xs text-slate-500">{label}</dt>
+                          <dd className="mt-0.5 break-words font-medium text-slate-800">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {!selectedFlat.profileDetails || Object.values(selectedFlat.profileDetails).every((value) => !value || (Array.isArray(value) && value.length === 0)) ? (
+                      <p className="mt-2 text-sm text-slate-400">No additional household details recorded.</p>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Household members</h3>
+                    {selectedFlat.familyMembers?.filter((member) => member.name.trim()).length ? (
+                      <ul className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
+                        {selectedFlat.familyMembers.filter((member) => member.name.trim()).map((member) => (
+                          <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3" key={member.id}>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{member.name}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">
+                                {member.relationship || 'Family member'}{member.age !== undefined ? ` · Age ${member.age}` : ''}
+                              </p>
+                            </div>
+                            {member.phone && <p className="text-xs text-slate-600">{member.phone}</p>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-sm text-slate-400">Individual family member details have not been added.</p>
+                    )}
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Registered vehicles</h3>
+                      {selectedFlat.vehicles.length ? (
+                        <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+                          {selectedFlat.vehicles.map((vehicle) => (
+                            <li key={`${vehicle.type}-${vehicle.number}`}>{vehicle.type}: {vehicle.number}{vehicle.makeModel ? ` · ${vehicle.makeModel}` : ''}</li>
+                          ))}
+                        </ul>
+                      ) : <p className="mt-2 text-sm text-slate-400">No vehicles recorded</p>}
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Emergency contacts</h3>
+                      {selectedFlat.emergencyContacts?.length ? (
+                        <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                          {selectedFlat.emergencyContacts.map((contact) => (
+                            <li key={contact.id}>
+                              <span className="font-medium">{contact.name}</span>
+                              <span className="text-slate-500"> · {contact.relationship} · {contact.phone}</span>
+                              {contact.alternatePhone && <span className="block text-xs text-slate-500">Alternate: {contact.alternatePhone}</span>}
+                              {contact.bloodGroup && <span className="block text-xs text-slate-500">Blood group: {contact.bloodGroup}</span>}
+                              {contact.medicalNotes && <span className="block text-xs text-slate-500">Medical notes: {contact.medicalNotes}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="mt-2 text-sm text-slate-400">No emergency contacts recorded</p>}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-4">
+                    <p className="text-sm text-slate-600">Outstanding dues</p>
+                    <p className="mt-1 text-lg font-bold tabular-nums text-slate-950">₹{selectedFlat.outstandingDues.toLocaleString('en-IN')}</p>
+                  </div>
+                </>
+              )}
+
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-between">
+                {selectedFlat.occupancyStatus === 'Vacant' ? (
+                  <button
+                    className="rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                    onClick={() => { setSelectedFlat(null); setShowAssignResident(true); }}
+                    type="button"
+                  >
+                    Assign a resident
+                  </button>
+                ) : (
+                  <button
+                    className="rounded-lg border border-amber-300 px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-50"
+                    onClick={() => handleMarkVacant(selectedFlat)}
+                    type="button"
+                  >
+                    Mark apartment vacant
+                  </button>
+                )}
+                <button className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={() => setSelectedFlat(null)} type="button">
+                  Close
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      <AddApartmentModal isOpen={showAddApartment} onClose={() => setShowAddApartment(false)} />
+      {showAssignResident && (
+        <AddMemberFlatModal isOpen={showAssignResident} onClose={() => setShowAssignResident(false)} />
+      )}
+    </section>
+  );
+};

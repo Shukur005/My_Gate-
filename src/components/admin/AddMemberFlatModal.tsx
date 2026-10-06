@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSociety } from '../../context/SocietyContext';
-import { EmergencyContact, FlatProfileDetails } from '../../types';
+import { EmergencyContact, FlatFamilyMember, FlatProfileDetails } from '../../types';
 import {
   Building2,
   UserCheck,
@@ -27,19 +27,20 @@ interface AddMemberFlatModalProps {
 }
 
 export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, onClose }) => {
-  const { addFlatWithMember } = useSociety();
+  const { flats, addFlatWithMember } = useSociety();
+  const availableFlats = flats.filter((flat) => flat.occupancyStatus === 'Vacant');
 
   // Form State - Flat & Member Info
-  const [wing, setWing] = useState('A');
-  const [floor, setFloor] = useState<number>(1);
-  const [flatNumber, setFlatNumber] = useState('');
+  const [flatNumber, setFlatNumber] = useState(() => availableFlats[0]?.flatNumber || '');
+  const selectedFlat = availableFlats.find((flat) => flat.flatNumber === flatNumber);
   const [ownerName, setOwnerName] = useState('');
-  const [occupancyStatus, setOccupancyStatus] = useState<'Owner' | 'Tenant' | 'Vacant'>('Owner');
+  const [occupancyStatus, setOccupancyStatus] = useState<'Owner' | 'Tenant'>('Owner');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [familyMembersCount, setFamilyMembersCount] = useState<number>(1);
+  const [familyMembers, setFamilyMembers] = useState<FlatFamilyMember[]>([]);
 
   // Vehicles state
   const [vehicles, setVehicles] = useState<{ type: 'Car' | 'Bike'; number: string; makeModel?: string; color?: string; fastTag?: string }[]>([
@@ -97,23 +98,12 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
     setProfileDetails((current) => ({ ...current, [field]: value }));
   };
 
-  // Auto update flat unit number format when wing or floor changes
-  const handleWingChange = (newWing: string) => {
-    setWing(newWing);
-    setFlatNumber(`${newWing}-${floor}01`);
-  };
-
-  const handleFloorChange = (newFloor: number) => {
-    setFloor(newFloor);
-    setFlatNumber(`${wing}-${newFloor}01`);
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    if (!flatNumber.trim()) {
-      setFormError('Please provide a valid Flat Number (e.g. A-105).');
+    if (!selectedFlat) {
+      setFormError('Select an available apartment before assigning a resident.');
       return;
     }
 
@@ -143,8 +133,8 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
 
     const result = addFlatWithMember({
       flatNumber,
-      wing,
-      floor,
+      wing: selectedFlat.wing,
+      floor: selectedFlat.floor,
       ownerName,
       occupancyStatus,
       phone,
@@ -152,6 +142,12 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
       username,
       password,
       familyMembersCount,
+      familyMembers: familyMembers.filter((member) => member.name.trim()).map((member) => ({
+        ...member,
+        name: member.name.trim(),
+        relationship: member.relationship.trim(),
+        phone: member.phone?.trim() || undefined,
+      })),
       vehicles: filteredVehicles,
       emergencyContacts: filteredEmergencyContacts,
       profileDetails,
@@ -188,10 +184,10 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-lg text-slate-950">Add Flat Member</h3>
+                <h3 className="font-extrabold text-lg text-slate-950">Assign Resident to Apartment</h3>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                All-in-one form for apartment allocation, resident profile & monthly maintenance billing setup
+                Select a vacant apartment, add the resident and household details, and optionally create the first maintenance bill.
               </p>
             </div>
           </div>
@@ -220,6 +216,12 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
             </div>
           )}
 
+          {availableFlats.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-bold">No vacant apartments are available.</p>
+              <p className="mt-1 text-xs">Add an apartment to the inventory or mark an occupied apartment as vacant before assigning a resident.</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
             <div className="space-y-4">
           {/* SECTION 1: FLAT & LOCATION DETAILS */}
@@ -233,40 +235,22 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
 
             <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-3">
               <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">Wing</label>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">Available Apartment *</label>
                 <select
-                  value={wing}
-                  onChange={(e) => handleWingChange(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-slate-900"
-                >
-                  <option value="A">Wing A (Lotus Tower)</option>
-                  <option value="B">Wing B (Orchid Tower)</option>
-                  <option value="C">Wing C (Jasmine Block)</option>
-                  <option value="D">Wing D (Elegance)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">Floor Number</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="30"
-                  value={floor}
-                  onChange={(e) => handleFloorChange(parseInt(e.target.value) || 1)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">Flat Number / Unit ID</label>
-                <input
-                  type="text"
-                  placeholder="e.g. A-105"
                   value={flatNumber}
-                  onChange={(e) => setFlatNumber(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-extrabold text-slate-900 focus:outline-none focus:border-slate-900 uppercase"
-                />
+                  onChange={(e) => setFlatNumber(e.target.value)}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-extrabold text-slate-900 focus:outline-none focus:border-slate-900"
+                >
+                  {availableFlats.map((flat) => (
+                    <option key={flat.flatNumber} value={flat.flatNumber}>
+                      {flat.flatNumber} · {flat.wing}, Floor {flat.floor}
+                    </option>
+                  ))}
+                </select>
+                {selectedFlat?.propertyAddress && (
+                  <p className="mt-1.5 text-[11px] text-slate-500">{selectedFlat.propertyAddress}</p>
+                )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -326,7 +310,6 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
                 >
                   <option value="Owner">Owner Occupied</option>
                   <option value="Tenant">Tenant Occupied</option>
-                  <option value="Vacant">Vacant</option>
                 </select>
               </div>
 
@@ -394,7 +377,7 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
                 </div>
               </div>
 
-              <div>
+              <div className="sm:col-span-2">
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">Family Members Count</label>
                 <input
                   type="number"
@@ -404,6 +387,74 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
                   onChange={(e) => setFamilyMembersCount(parseInt(e.target.value) || 1)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-slate-900"
                 />
+              </div>
+              <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-800">Household member details</h5>
+                    <p className="mt-0.5 text-[10px] text-slate-500">Add family members besides the primary resident.</p>
+                  </div>
+                  <button
+                    className="shrink-0 text-xs font-bold text-emerald-800 hover:text-emerald-950"
+                    onClick={() => setFamilyMembers((members) => [...members, {
+                      id: `family-${Date.now()}-${members.length}`,
+                      name: '',
+                      relationship: '',
+                    }])}
+                    type="button"
+                  >
+                    + Add member
+                  </button>
+                </div>
+                {familyMembers.length === 0 ? (
+                  <p className="text-xs text-slate-400">No additional member details added.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {familyMembers.map((member, index) => (
+                      <div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-2" key={member.id}>
+                        <input
+                          aria-label={`Family member ${index + 1} name`}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-900"
+                          onChange={(event) => setFamilyMembers((members) => members.map((item) => item.id === member.id ? { ...item, name: event.target.value } : item))}
+                          placeholder="Full name"
+                          value={member.name}
+                        />
+                        <input
+                          aria-label={`Family member ${index + 1} relationship`}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-900"
+                          onChange={(event) => setFamilyMembers((members) => members.map((item) => item.id === member.id ? { ...item, relationship: event.target.value } : item))}
+                          placeholder="Relationship (e.g. spouse)"
+                          value={member.relationship}
+                        />
+                        <input
+                          aria-label={`Family member ${index + 1} age`}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-900"
+                          max="120"
+                          min="0"
+                          onChange={(event) => setFamilyMembers((members) => members.map((item) => item.id === member.id ? { ...item, age: event.target.value ? Number(event.target.value) : undefined } : item))}
+                          placeholder="Age (optional)"
+                          type="number"
+                          value={member.age ?? ''}
+                        />
+                        <input
+                          aria-label={`Family member ${index + 1} phone`}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-900"
+                          onChange={(event) => setFamilyMembers((members) => members.map((item) => item.id === member.id ? { ...item, phone: event.target.value } : item))}
+                          placeholder="Phone (optional)"
+                          type="tel"
+                          value={member.phone || ''}
+                        />
+                        <button
+                          className="justify-self-start text-[11px] font-semibold text-rose-600 hover:text-rose-800 sm:col-span-2"
+                          onClick={() => setFamilyMembers((members) => members.filter((item) => item.id !== member.id))}
+                          type="button"
+                        >
+                          Remove member
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">Father / Spouse Name</label>
@@ -725,6 +776,7 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
           </div>
             </div>
           </div>
+          )}
 
           {/* Form Action Footer */}
           <div className="sticky bottom-0 mt-4 pt-3 pb-1 bg-white/95 backdrop-blur border-t border-slate-200 flex gap-3">
@@ -735,13 +787,15 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              className="flex-1 bg-slate-900 hover:bg-black text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Submit & Auto-Update Records</span>
-            </button>
+            {availableFlats.length > 0 && (
+              <button
+                type="submit"
+                className="flex-1 bg-slate-900 hover:bg-black text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Assign Resident & Update Records</span>
+              </button>
+            )}
           </div>
         </form>
       </div>
