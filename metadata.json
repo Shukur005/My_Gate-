@@ -1,0 +1,6 @@
+{
+  "name": "MyGate Society & Security Platform",
+  "description": "Complete gated community management system with gate pass visitor tracking, security guard desk, apartment accounting & maintenance billing, amenity bookings, and emergency alerts.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
