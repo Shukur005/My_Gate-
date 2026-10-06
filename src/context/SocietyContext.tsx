@@ -11,6 +11,7 @@ import {
   SocietyNotice,
   DailyStaff,
   FlatDetail,
+  FlatFamilyMember,
   FlatProfileDetails,
   EmergencyAlert,
   EmergencyContact,
@@ -128,6 +129,12 @@ interface SocietyContextType {
   switchUserAccount: (userId: string) => void;
   
   flats: FlatDetail[];
+  addApartment: (data: Pick<FlatDetail, 'flatNumber' | 'wing' | 'floor' | 'propertyAddress'>) => {
+    success: boolean;
+    message: string;
+  };
+  updateApartmentAddress: (flatNumber: string, propertyAddress: string) => { success: boolean; message: string };
+  markFlatVacant: (flatNumber: string) => { success: boolean; message: string };
   visitors: VisitorPass[];
   bills: MaintenanceBill[];
   expenses: SocietyExpense[];
@@ -224,6 +231,7 @@ interface SocietyContextType {
     username: string;
     password: string;
     familyMembersCount: number;
+    familyMembers?: FlatFamilyMember[];
     vehicles: { type: 'Car' | 'Bike'; number: string; makeModel?: string; color?: string; fastTag?: string }[];
     monthlyMaintenance: {
       baseMaintenance: number;
@@ -812,6 +820,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     username: string;
     password: string;
     familyMembersCount: number;
+    familyMembers?: FlatFamilyMember[];
     vehicles: { type: 'Car' | 'Bike'; number: string; makeModel?: string; color?: string; fastTag?: string }[];
     monthlyMaintenance: {
       baseMaintenance: number;
@@ -828,13 +837,23 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const formattedFlatNum = data.flatNumber.toUpperCase().trim();
     const cleanUsername = data.username.trim().toLowerCase();
     const cleanEmail = data.email.trim().toLowerCase();
+    const existing = flats.find((f) => f.flatNumber.toUpperCase() === formattedFlatNum);
+
+    if (!existing) {
+      return { success: false, message: `Apartment ${formattedFlatNum} is not in the inventory. Add it before assigning a resident.` };
+    }
+    if (existing.occupancyStatus !== 'Vacant') {
+      return { success: false, message: `Apartment ${formattedFlatNum} is already occupied. Select a vacant apartment.` };
+    }
+    if (data.occupancyStatus === 'Vacant') {
+      return { success: false, message: 'Choose Owner or Tenant when assigning a resident.' };
+    }
     if (users.some((user) => user.username?.toLowerCase() === cleanUsername)) {
       return { success: false, message: `Username "${data.username.trim()}" is already in use. Please choose another.` };
     }
     if (cleanEmail && users.some((user) => user.email.toLowerCase() === cleanEmail)) {
       return { success: false, message: `Email address "${data.email.trim()}" is already in use. Please enter another.` };
     }
-    const existing = flats.find((f) => f.flatNumber === formattedFlatNum);
 
     const totalMonthly =
       Number(data.monthlyMaintenance.baseMaintenance || 0) +
@@ -845,46 +864,37 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const autoGenBill = data.monthlyMaintenance.autoGenerateFirstBill !== false;
 
     const newFlatEntry: FlatDetail = {
-      flatNumber: formattedFlatNum,
-      wing: data.wing.toUpperCase().trim(),
-      floor: Number(data.floor) || 1,
+      ...existing,
       ownerName: data.ownerName.trim(),
       occupancyStatus: data.occupancyStatus,
       phone: data.phone.trim(),
       email: cleanEmail || `${cleanUsername}@resident.mygate.org`,
       vehicles: data.vehicles || [],
       familyMembersCount: Number(data.familyMembersCount) || 1,
-      outstandingDues: autoGenBill ? totalMonthly : 0,
+      familyMembers: data.familyMembers || [],
+      outstandingDues: existing.outstandingDues + (autoGenBill ? totalMonthly : 0),
       emergencyContacts: data.emergencyContacts || [],
-      profileDetails: data.profileDetails,
+      profileDetails: { ...existing.profileDetails, ...data.profileDetails },
     };
 
-    if (existing) {
-      // Update existing flat entry
-      setFlats((prev) => prev.map((f) => (f.flatNumber === formattedFlatNum ? newFlatEntry : f)));
-    } else {
-      // Add new flat entry
-      setFlats((prev) => [newFlatEntry, ...prev]);
-    }
+    setFlats((prev) => prev.map((f) => (f.flatNumber.toUpperCase() === formattedFlatNum ? newFlatEntry : f)));
 
-    if (data.occupancyStatus !== 'Vacant') {
-      const residentUser: AuthUser = {
-        id: `usr-res-${Date.now()}`,
-        name: data.ownerName.trim(),
-        username: cleanUsername,
-        email: newFlatEntry.email,
-        phone: data.phone.trim(),
-        password: data.password,
-        role: 'resident',
-        flatNumber: formattedFlatNum,
-        wing: newFlatEntry.wing,
-        occupancyStatus: data.occupancyStatus,
-        familyMembersCount: newFlatEntry.familyMembersCount,
-        vehicleNumber: newFlatEntry.vehicles[0]?.number,
-        createdAt: new Date().toISOString(),
-      };
-      setUsers((prev) => [...prev, residentUser]);
-    }
+    const residentUser: AuthUser = {
+      id: `usr-res-${Date.now()}`,
+      name: data.ownerName.trim(),
+      username: cleanUsername,
+      email: newFlatEntry.email,
+      phone: data.phone.trim(),
+      password: data.password,
+      role: 'resident',
+      flatNumber: formattedFlatNum,
+      wing: newFlatEntry.wing,
+      occupancyStatus: data.occupancyStatus,
+      familyMembersCount: newFlatEntry.familyMembersCount,
+      vehicleNumber: newFlatEntry.vehicles[0]?.number,
+      createdAt: new Date().toISOString(),
+    };
+    setUsers((prev) => [...prev, residentUser]);
 
     // Auto-generate first monthly maintenance bill if requested
     if (autoGenBill) {
@@ -913,6 +923,82 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       success: true,
       message: `Registered Flat ${formattedFlatNum} for ${newFlatEntry.ownerName} with ₹${totalMonthly.toLocaleString()}/month maintenance!`,
     };
+  };
+
+  const addApartment = (data: Pick<FlatDetail, 'flatNumber' | 'wing' | 'floor' | 'propertyAddress'>) => {
+    const flatNumber = data.flatNumber.trim().toUpperCase();
+    if (!flatNumber || !data.wing.trim() || !data.propertyAddress?.trim()) {
+      return { success: false, message: 'Enter the apartment number, wing, and property address.' };
+    }
+    if (flats.some((flat) => flat.flatNumber.toUpperCase() === flatNumber)) {
+      return { success: false, message: `Apartment ${flatNumber} already exists in the inventory.` };
+    }
+
+    const newApartment: FlatDetail = {
+      flatNumber,
+      wing: data.wing.trim(),
+      floor: Number(data.floor) || 1,
+      propertyAddress: data.propertyAddress.trim(),
+      ownerName: '',
+      occupancyStatus: 'Vacant',
+      phone: '',
+      email: '',
+      vehicles: [],
+      familyMembersCount: 0,
+      familyMembers: [],
+      outstandingDues: 0,
+      emergencyContacts: [],
+    };
+    setFlats((prev) => [...prev, newApartment].sort((a, b) => a.flatNumber.localeCompare(b.flatNumber)));
+    return { success: true, message: `Apartment ${flatNumber} added as vacant.` };
+  };
+
+  const updateApartmentAddress = (flatNumber: string, propertyAddress: string) => {
+    const normalizedAddress = propertyAddress.trim();
+    if (!normalizedAddress) {
+      return { success: false, message: 'Apartment address cannot be empty.' };
+    }
+    if (!flats.some((flat) => flat.flatNumber === flatNumber)) {
+      return { success: false, message: `Apartment ${flatNumber} was not found.` };
+    }
+    setFlats((prev) =>
+      prev.map((flat) => (flat.flatNumber === flatNumber ? { ...flat, propertyAddress: normalizedAddress } : flat))
+    );
+    return { success: true, message: `Address for apartment ${flatNumber} updated.` };
+  };
+
+  const markFlatVacant = (flatNumber: string) => {
+    const apartment = flats.find((flat) => flat.flatNumber === flatNumber);
+    if (!apartment) return { success: false, message: `Apartment ${flatNumber} was not found.` };
+    if (apartment.occupancyStatus === 'Vacant') {
+      return { success: false, message: `Apartment ${flatNumber} is already vacant.` };
+    }
+
+    setFlats((prev) =>
+      prev.map((flat) =>
+        flat.flatNumber === flatNumber
+          ? {
+              ...flat,
+              ownerName: '',
+              occupancyStatus: 'Vacant',
+              phone: '',
+              email: '',
+              vehicles: [],
+              familyMembersCount: 0,
+              emergencyContacts: [],
+              profileDetails: undefined,
+            }
+          : flat
+      )
+    );
+    setUsers((prev) =>
+      prev.map((user) =>
+        user.role === 'resident' && user.flatNumber === flatNumber
+          ? { ...user, flatNumber: undefined, wing: undefined, occupancyStatus: undefined, familyMembersCount: undefined, vehicleNumber: undefined }
+          : user
+      )
+    );
+    return { success: true, message: `Apartment ${flatNumber} is now marked vacant.` };
   };
 
   const deleteFlat = (flatNumber: string) => {
@@ -1843,6 +1929,9 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         logout,
         switchUserAccount,
         flats,
+        addApartment,
+        updateApartmentAddress,
+        markFlatVacant,
         visitors,
         bills,
         expenses,

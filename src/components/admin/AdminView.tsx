@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSociety } from '../../context/SocietyContext';
 import { downloadBillReceipt } from '../../utils/receiptGenerator';
-import { AddMemberFlatModal } from './AddMemberFlatModal';
+import { ApartmentCensusSection } from './ApartmentCensusSection';
 import { GuardManagementSection } from './GuardManagementSection';
 import {
   Building2,
@@ -49,7 +49,6 @@ export const AdminView: React.FC = () => {
     updateComplaintStatus,
     addNotice,
     deleteNotice,
-    deleteFlat,
     activeSidebarNav,
   } = useSociety();
 
@@ -75,7 +74,6 @@ export const AdminView: React.FC = () => {
   }, [activeSidebarNav]);
 
   // Modal States
-  const [showAddMemberFlat, setShowAddMemberFlat] = useState(false);
   const [showCreateBill, setShowCreateBill] = useState(false);
   const [billFlat, setBillFlat] = useState('B-402');
   const [billOwner, setBillOwner] = useState('');
@@ -157,9 +155,6 @@ export const AdminView: React.FC = () => {
   const [newRecipName, setNewRecipName] = useState('');
   const [newRecipEmail, setNewRecipEmail] = useState('');
   const [newRecipRole, setNewRecipRole] = useState('Committee Member');
-
-  // Search Filters
-  const [flatSearch, setFlatSearch] = useState('');
 
   // Financial Calculations
   const totalCollected = bills.filter((b) => b.status === 'paid').reduce((acc, b) => acc + b.totalAmount, 0);
@@ -272,13 +267,6 @@ export const AdminView: React.FC = () => {
     setNewRecipEmail('');
     setShowAddRecipient(false);
   };
-
-  const filteredFlats = flats.filter(
-    (f) =>
-      f.flatNumber.toLowerCase().includes(flatSearch.toLowerCase()) ||
-      f.ownerName.toLowerCase().includes(flatSearch.toLowerCase()) ||
-      f.wing.toLowerCase().includes(flatSearch.toLowerCase())
-  );
 
   return (
     <div className="w-full min-h-screen bg-[#f8fafc] text-slate-800 pb-16 font-sans">
@@ -790,102 +778,7 @@ export const AdminView: React.FC = () => {
 
         {/* ================= FLATS DIRECTORY TAB (NEAT WHITE GRIDS) ================= */}
         {adminTab === 'flats' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-xs border border-slate-200/90 p-6 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 tracking-tight">Apartment Census Directory</h3>
-                  <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-                    Detailed society census of owners, verified tenants, vehicles with FASTag numbers, and emergency contacts.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                    <input
-                      type="text"
-                      value={flatSearch}
-                      onChange={(e) => setFlatSearch(e.target.value)}
-                      placeholder="Filter flat or owner..."
-                      className="bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-slate-800"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddMemberFlat(true)}
-                    className="bg-[#0c1f28] hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-sm transition-colors cursor-pointer"
-                  >
-                    Add Flat Member
-                  </button>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-800 font-bold text-xs">
-                      <th className="py-3 px-4 w-14">Sr.No.</th>
-                      <th className="py-3 px-4">Flat Unit</th>
-                      <th className="py-3 px-4">Wing / Block</th>
-                      <th className="py-3 px-4">Resident Name</th>
-                      <th className="py-3 px-4">Occupancy</th>
-                      <th className="py-3 px-4">Phone</th>
-                      <th className="py-3 px-4">Vehicles</th>
-                      <th className="py-3 px-4">Dues</th>
-                      <th className="py-3 px-4 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {filteredFlats.map((flat, index) => (
-                      <tr key={flat.flatNumber} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3.5 px-4 font-mono text-slate-600">{index + 1}</td>
-                        <td className="py-3.5 px-4 font-bold text-slate-900">{flat.flatNumber}</td>
-                        <td className="py-3.5 px-4 text-slate-600">{flat.wing}</td>
-                        <td className="py-3.5 px-4 font-bold text-slate-900">{flat.ownerName}</td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              flat.occupancyStatus === 'Owner'
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : 'bg-blue-50 text-blue-700'
-                            }`}
-                          >
-                            {flat.occupancyStatus}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-slate-600">{flat.phone}</td>
-                        <td className="py-3.5 px-4 text-slate-600">
-                          {flat.vehicles.map((v) => v.number).join(', ') || 'None'}
-                        </td>
-                        <td className="py-3.5 px-4 font-bold">
-                          {flat.outstandingDues > 0 ? (
-                            <span className="text-amber-600">₹{flat.outstandingDues.toLocaleString()}</span>
-                          ) : (
-                            <span className="text-emerald-600">₹0 (Paid)</span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          <button
-                            onClick={() => alert(`View flat census for ${flat.flatNumber}`)}
-                            className="text-sky-600 hover:text-sky-800 font-semibold cursor-pointer mr-1"
-                          >
-                            Profile
-                          </button>
-                          <span className="text-slate-300">|</span>
-                          <button
-                            onClick={() => deleteFlat(flat.flatNumber)}
-                            className="text-sky-600 hover:text-rose-600 font-semibold cursor-pointer ml-1"
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <ApartmentCensusSection />
         )}
 
         {/* ================= HELPDESK & COMPLAINTS TAB (NEAT WHITE GRIDS) ================= */}
@@ -1223,14 +1116,7 @@ export const AdminView: React.FC = () => {
         </div>
       )}
 
-      {/* Existing Modals: Member Registration & Bill Creation */}
-      {showAddMemberFlat && (
-        <AddMemberFlatModal
-          isOpen={showAddMemberFlat}
-          onClose={() => setShowAddMemberFlat(false)}
-        />
-      )}
-
+      {/* Existing Modals: Bill Creation */}
       {showCreateBill && (
         <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
