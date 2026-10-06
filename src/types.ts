@@ -19,6 +19,7 @@ export interface VisitorPass {
   checkInTime?: string;
   checkOutTime?: string;
   approvedByResident?: boolean;
+  deliveryInstruction?: 'leave_at_gate';
   notes?: string;
   entryGate?: string;
   // QR Pass details
@@ -106,6 +107,16 @@ export interface AmenityBooking {
   bookingDate: string;
 }
 
+export interface GuardEventSecurityPlan {
+  eventId: string;
+  guestProtocol: string;
+  parkingPlan: string;
+  guardNotes: string;
+  status: 'planning' | 'ready' | 'completed';
+  updatedBy: string;
+  updatedAt: string;
+}
+
 export interface ComplaintTicket {
   id: string;
   flatNumber: string;
@@ -128,6 +139,15 @@ export interface SocietyNotice {
   date: string;
   author: string;
   isImportant: boolean;
+}
+
+export interface GuardChatMessage {
+  id: string;
+  guardName: string;
+  badgeId?: string;
+  gateStation: string;
+  message: string;
+  sentAt: string;
 }
 
 export interface DailyStaff {

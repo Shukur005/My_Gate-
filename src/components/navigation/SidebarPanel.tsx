@@ -104,6 +104,10 @@ export const SidebarPanel: React.FC = () => {
       return;
     }
     if (id === 'chat') {
+      if (role === 'guard') {
+        setActiveSidebarNav('chat');
+        return;
+      }
       setShowChatModal(true);
       return;
     }
@@ -144,7 +148,7 @@ export const SidebarPanel: React.FC = () => {
     ? bills.filter(
         (b) =>
           b.flatNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          b.billMonth.toLowerCase().includes(searchQuery.toLowerCase())
+          b.monthYear.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : [];
 
@@ -178,31 +182,31 @@ export const SidebarPanel: React.FC = () => {
     },
     {
       id: 'community',
-      label: 'Residents & Community',
+      label: role === 'guard' ? 'Guard Team & Duty Roster' : 'Residents & Community',
       category: 'People',
       icon: (active) => <Users className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'notices',
-      label: 'Announcements & Notices',
+      label: role === 'guard' ? 'Gate Repairs & Announcements' : 'Announcements & Notices',
       category: 'Broadcasts',
       icon: (active) => <Megaphone className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'chat',
-      label: 'Community Discussions',
+      label: role === 'guard' ? 'Gate-to-Gate Guard Chat' : 'Community Discussions',
       category: 'Messages',
       icon: (active) => <MessageSquare className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'helpdesk',
-      label: 'Help Desk & Complaints',
+      label: role === 'guard' ? 'Guard Duty Help Desk' : 'Help Desk & Complaints',
       category: 'Help Desk',
       icon: (active) => <LifeBuoy className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'calendar',
-      label: 'Clubhouse & Amenity Calendar',
+      label: role === 'guard' ? 'Events & Guard Protocols' : 'Clubhouse & Amenity Calendar',
       category: 'Facilities',
       icon: (active) => <Calendar className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
@@ -282,7 +286,10 @@ export const SidebarPanel: React.FC = () => {
 
         {/* Clean Line Icon Rail */}
         <nav className="flex-1 w-full flex flex-col items-center space-y-1.5 overflow-y-auto overflow-x-hidden scrollbar-none py-1">
-          {navItems.filter((item) => role !== 'resident' || (item.id !== 'staff' && item.id !== 'reports')).map((item) => {
+          {navItems.filter((item) =>
+            (role !== 'resident' || (item.id !== 'staff' && item.id !== 'reports')) &&
+            (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports'))
+          ).map((item) => {
             const isActive = activeSidebarNav === item.id;
             const isRupeeItem = item.id === 'accounting';
 
@@ -429,7 +436,7 @@ export const SidebarPanel: React.FC = () => {
                           >
                             <div>
                               <div className="text-sm font-bold text-slate-900">
-                                Flat {b.flatNumber} • {b.billMonth}
+                                Flat {b.flatNumber} • {b.monthYear}
                               </div>
                               <div className="text-xs text-slate-500">Due: {b.dueDate}</div>
                             </div>

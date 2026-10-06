@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   UserRole,
@@ -18,6 +19,8 @@ import {
   QRVerificationResult,
   QRPassPayload,
   GuardShiftLog,
+  GuardChatMessage,
+  GuardEventSecurityPlan,
   ShiftIncident,
   ShiftIncidentCategory,
   ShiftIncidentSeverity,
@@ -140,11 +143,17 @@ interface SocietyContextType {
   expenses: SocietyExpense[];
   amenities: Amenity[];
   bookings: AmenityBooking[];
+  guardEventSecurityPlans: GuardEventSecurityPlan[];
+  saveGuardEventSecurityPlan: (
+    plan: Pick<GuardEventSecurityPlan, 'eventId' | 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'>
+  ) => { success: boolean; message: string };
   complaints: ComplaintTicket[];
   notices: SocietyNotice[];
   staff: DailyStaff[];
   sosAlerts: EmergencyAlert[];
   shiftLogs: GuardShiftLog[];
+  guardChatMessages: GuardChatMessage[];
+  sendGuardChatMessage: (message: string) => { success: boolean; message: string };
   activeShift: GuardShiftLog | null;
   incomingCall: IncomingGateCall | null;
   setIncomingCall: React.Dispatch<React.SetStateAction<IncomingGateCall | null>>;
@@ -169,6 +178,10 @@ interface SocietyContextType {
 
   logShiftIncident: (incidentData: {
     shiftId?: string;
+    guardName?: string;
+    guardBadgeId?: string;
+    gateStation?: string;
+    shiftType?: GuardShiftLog['shiftType'];
     severity: ShiftIncidentSeverity;
     category: ShiftIncidentCategory;
     title: string;
@@ -215,7 +228,7 @@ interface SocietyContextType {
   }) => VisitorPass;
 
   checkOutVisitor: (visitorId: string) => void;
-  approvePendingVisitor: (visitorId: string) => void;
+  approvePendingVisitor: (visitorId: string, leaveAtGate?: boolean) => void;
   denyPendingVisitor: (visitorId: string) => void;
   updateVisitorStatus: (visitorId: string, status: VisitorPass['status']) => void;
   deleteVisitorPass: (visitorId: string) => { success: boolean; message: string };
@@ -355,6 +368,11 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return saved ? JSON.parse(saved) : INITIAL_BOOKINGS;
   });
 
+  const [guardEventSecurityPlans, setGuardEventSecurityPlans] = useState<GuardEventSecurityPlan[]>(() => {
+    const saved = localStorage.getItem('mygate_guard_event_security_plans');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [complaints, setComplaints] = useState<ComplaintTicket[]>(() => {
     const saved = localStorage.getItem('mygate_complaints');
     return saved ? JSON.parse(saved) : INITIAL_COMPLAINTS;
@@ -378,6 +396,11 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [shiftLogs, setShiftLogs] = useState<GuardShiftLog[]>(() => {
     const saved = localStorage.getItem('mygate_shift_logs');
     return saved ? JSON.parse(saved) : INITIAL_SHIFT_LOGS;
+  });
+
+  const [guardChatMessages, setGuardChatMessages] = useState<GuardChatMessage[]>(() => {
+    const saved = localStorage.getItem('mygate_guard_chat');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const activeShift = shiftLogs.find((s) => s.status === 'active') || null;
@@ -406,6 +429,29 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [bookings]);
 
   useEffect(() => {
+    localStorage.setItem('mygate_guard_event_security_plans', JSON.stringify(guardEventSecurityPlans));
+  }, [guardEventSecurityPlans]);
+
+  useEffect(() => {
+    const syncGuardEventPlans = (event: StorageEvent) => {
+      if (event.key !== 'mygate_guard_event_security_plans') return;
+      if (!event.newValue) {
+        setGuardEventSecurityPlans([]);
+        return;
+      }
+
+      try {
+        setGuardEventSecurityPlans(JSON.parse(event.newValue) as GuardEventSecurityPlan[]);
+      } catch (error) {
+        console.error('Unable to sync guard event security plans from browser storage.', error);
+      }
+    };
+
+    window.addEventListener('storage', syncGuardEventPlans);
+    return () => window.removeEventListener('storage', syncGuardEventPlans);
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('mygate_complaints', JSON.stringify(complaints));
   }, [complaints]);
 
@@ -424,6 +470,29 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     localStorage.setItem('mygate_shift_logs', JSON.stringify(shiftLogs));
   }, [shiftLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('mygate_guard_chat', JSON.stringify(guardChatMessages));
+  }, [guardChatMessages]);
+
+  useEffect(() => {
+    const syncGuardChat = (event: StorageEvent) => {
+      if (event.key !== 'mygate_guard_chat') return;
+      if (!event.newValue) {
+        setGuardChatMessages([]);
+        return;
+      }
+
+      try {
+        setGuardChatMessages(JSON.parse(event.newValue) as GuardChatMessage[]);
+      } catch (error) {
+        console.error('Unable to sync guard chat messages from browser storage.', error);
+      }
+    };
+
+    window.addEventListener('storage', syncGuardChat);
+    return () => window.removeEventListener('storage', syncGuardChat);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('mygate_users', JSON.stringify(users));
@@ -611,9 +680,12 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   };
 
-  const verifyAndCheckInVisitor = (passcodeOrToken: string, entryGate: string = 'Main Gate 1') => {
+  const verifyAndCheckInVisitor = (
+    passcodeOrToken: string,
+    entryGate: string = 'Main Gate 1'
+  ): { success: boolean; message: string; visitor?: VisitorPass; code?: string } => {
     const result = verifyQRPassPayload(passcodeOrToken);
-    
+
     if (!result.success || !result.pass) {
       return {
         success: false,
@@ -625,6 +697,13 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const target = result.pass;
     const updatedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const checkedInVisitor: VisitorPass = {
+      ...target,
+      status: 'in_gate',
+      checkInTime: updatedTime,
+      entryGate: entryGate || target.entryGate || 'Main Gate 1',
+      approvedByResident: true,
+    };
 
     setVisitors((prev) =>
       prev.map((v) =>
@@ -643,7 +722,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // If target flat matches active flat, trigger simulated gate bell
     if (target.flatNumber === activeFlat) {
       setIncomingCall({
-        visitor: { ...target, status: 'in_gate', checkInTime: updatedTime, entryGate: entryGate || 'Main Gate 1' },
+        visitor: checkedInVisitor,
         timestamp: updatedTime,
       });
     }
@@ -652,7 +731,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       success: true,
       code: 'VALID',
       message: `Verified & Checked In! Entry granted for ${target.visitorName} to Flat ${target.flatNumber} via ${entryGate || 'Main Gate 1'}.`,
-      visitor: { ...target, status: 'in_gate', checkInTime: updatedTime, entryGate: entryGate || 'Main Gate 1' },
+      visitor: checkedInVisitor,
     };
   };
 
@@ -759,11 +838,19 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
   };
 
-  const approvePendingVisitor = (visitorId: string) => {
+  const approvePendingVisitor = (visitorId: string, leaveAtGate = false) => {
     const updatedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setVisitors((prev) =>
       prev.map((v) =>
-        v.id === visitorId ? { ...v, status: 'in_gate', checkInTime: updatedTime, approvedByResident: true } : v
+        v.id === visitorId
+          ? {
+              ...v,
+              status: 'in_gate',
+              checkInTime: updatedTime,
+              approvedByResident: true,
+              deliveryInstruction: leaveAtGate && v.category === 'delivery' ? 'leave_at_gate' : v.deliveryInstruction,
+            }
+          : v
       )
     );
     if (incomingCall && incomingCall.visitor.id === visitorId) {
@@ -1093,6 +1180,32 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: 'cancelled' } : b)));
   };
 
+  const saveGuardEventSecurityPlan = (
+    plan: Pick<GuardEventSecurityPlan, 'eventId' | 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'>
+  ): { success: boolean; message: string } => {
+    if (role !== 'guard' || currentUser?.role !== 'guard') {
+      return { success: false, message: 'Only a signed-in guard can update event security plans.' };
+    }
+    if (!plan.eventId || !plan.guestProtocol.trim() || !plan.parkingPlan.trim()) {
+      return { success: false, message: 'Add both guest-entry and vehicle-parking instructions before saving.' };
+    }
+
+    const updatedPlan: GuardEventSecurityPlan = {
+      ...plan,
+      guestProtocol: plan.guestProtocol.trim(),
+      parkingPlan: plan.parkingPlan.trim(),
+      guardNotes: plan.guardNotes.trim(),
+      updatedBy: currentUser.name,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setGuardEventSecurityPlans((previous) => [
+      updatedPlan,
+      ...previous.filter((existing) => existing.eventId !== updatedPlan.eventId),
+    ]);
+    return { success: true, message: 'Event security plan saved.' };
+  };
+
   const submitComplaint = (data: Omit<ComplaintTicket, 'id' | 'createdAt' | 'status' | 'flatNumber' | 'residentName'>) => {
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
     const newTkt: ComplaintTicket = {
@@ -1134,6 +1247,31 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...data,
     };
     setNotices((prev) => [newNotice, ...prev]);
+  };
+
+  const sendGuardChatMessage = (message: string): { success: boolean; message: string } => {
+    const text = message.trim();
+    if (!text) return { success: false, message: 'Enter a message before sending.' };
+    if (role !== 'guard' || currentUser?.role !== 'guard') {
+      return { success: false, message: 'Only signed-in guards can send messages in this chat.' };
+    }
+
+    const userShift = shiftLogs.find((shift) =>
+      shift.status === 'active' &&
+      ((currentUser.badgeId && shift.guardBadgeId === currentUser.badgeId) ||
+        shift.guardName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+    );
+    const newMessage: GuardChatMessage = {
+      id: `GCHAT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      guardName: currentUser.name,
+      badgeId: currentUser.badgeId,
+      gateStation: userShift?.gateStation || currentUser.assignedGate || 'Gate not recorded',
+      message: text,
+      sentAt: new Date().toISOString(),
+    };
+
+    setGuardChatMessages((previous) => [...previous, newMessage]);
+    return { success: true, message: 'Message sent to the guard team.' };
   };
 
   const deleteNotice = (noticeId: string) => {
@@ -1364,6 +1502,10 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const logShiftIncident = (incidentData: {
     shiftId?: string;
+    guardName?: string;
+    guardBadgeId?: string;
+    gateStation?: string;
+    shiftType?: GuardShiftLog['shiftType'];
     severity: ShiftIncidentSeverity;
     category: ShiftIncidentCategory;
     title: string;
@@ -1378,10 +1520,24 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const timestampStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     const dateStr = now.toISOString().split('T')[0];
 
-    const activeOrFirstShift = shiftLogs.find((s) => s.status === 'active') || shiftLogs[0];
+    const matchingGuardShift = incidentData.guardBadgeId
+      ? shiftLogs.find((shift) =>
+          shift.status === 'active' &&
+          shift.guardBadgeId === incidentData.guardBadgeId
+        )
+      : incidentData.guardName
+        ? shiftLogs.find((shift) =>
+            shift.status === 'active' &&
+            shift.guardName.trim().toLowerCase() === incidentData.guardName?.trim().toLowerCase()
+          )
+        : undefined;
+    const activeOrFirstShift = incidentData.guardBadgeId || incidentData.guardName
+      ? matchingGuardShift
+      : shiftLogs.find((s) => s.status === 'active') || shiftLogs[0];
     const targetShiftId =
       incidentData.shiftId ||
-      (activeOrFirstShift ? activeOrFirstShift.id : `SHIFT-${Date.now().toString().slice(-6)}`);
+      activeOrFirstShift?.id ||
+      `SHIFT-${incidentData.guardBadgeId || Date.now().toString().slice(-6)}-${dateStr}`;
 
     const newIncident: ShiftIncident = {
       id: `INC-${Math.floor(100 + Math.random() * 900)}`,
@@ -1394,7 +1550,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       description: incidentData.description,
       location: incidentData.location,
       actionTaken: incidentData.actionTaken,
-      reportedBy: incidentData.reportedBy || activeOrFirstShift?.guardName || 'Security Guard',
+      reportedBy: incidentData.reportedBy || incidentData.guardName || activeOrFirstShift?.guardName || 'Security Guard',
       resolved: false,
       flatNumber: incidentData.flatNumber,
       vehicleNumber: incidentData.vehicleNumber,
@@ -1416,10 +1572,10 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         // Create an active shift if none exists
         const adHocShift: GuardShiftLog = {
           id: targetShiftId,
-          guardName: incidentData.reportedBy || 'Duty Guard Officer',
-          guardBadgeId: 'SEC-01',
-          gateStation: 'Main Gate 1',
-          shiftType: 'Morning',
+          guardName: incidentData.guardName || incidentData.reportedBy || 'Duty Guard Officer',
+          guardBadgeId: incidentData.guardBadgeId || 'Not recorded',
+          gateStation: incidentData.gateStation || 'Gate not recorded',
+          shiftType: incidentData.shiftType || 'Custom',
           date: dateStr,
           startTime: timestampStr,
           status: 'active',
@@ -1517,7 +1673,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const registerResident = (data: {
     name: string;
-    email: string;
+    email?: string;
     phone: string;
     flatNumber: string;
     wing?: string;
@@ -1527,13 +1683,22 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     password?: string;
   }) => {
     const cleanFlat = data.flatNumber.trim().toUpperCase();
+    const normalizedEmail = data.email?.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      return {
+        success: false,
+        message: 'Resident email is required to register an account.',
+      };
+    }
+
     const existing = users.find(
-      (u) => u.email.toLowerCase() === data.email.trim().toLowerCase() && u.role === 'resident'
+      (u) => u.email.toLowerCase() === normalizedEmail && u.role === 'resident'
     );
     if (existing) {
       return {
         success: false,
-        message: `An account with email ${data.email} already exists. Please sign in instead.`,
+        message: `An account with email ${normalizedEmail} already exists. Please sign in instead.`,
       };
     }
 
@@ -1541,7 +1706,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const newUser: AuthUser = {
       id: `usr-res-${Date.now()}`,
       name: data.name.trim(),
-      email: data.email.trim().toLowerCase(),
+      email: normalizedEmail,
       phone: data.phone.trim(),
       role: 'resident',
       flatNumber: cleanFlat,
@@ -1563,7 +1728,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ownerName: data.name.trim(),
         occupancyStatus: data.occupancyStatus || 'Owner',
         phone: data.phone.trim(),
-        email: data.email.trim().toLowerCase(),
+        email: normalizedEmail,
         vehicles: data.vehicleNumber ? [{ type: 'Car', number: data.vehicleNumber.trim() }] : [],
         familyMembersCount: data.familyMembersCount || 2,
         outstandingDues: 0,
@@ -1797,10 +1962,10 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const loginAdmin = (credentials: {
-    email: string;
+    email?: string;
     adminAccessCodeOrPassword?: string;
   }) => {
-    const term = credentials.email.trim().toLowerCase();
+    const term = (credentials.email || '').trim().toLowerCase();
     const adminUser = users.find(
       (u) =>
         u.role === 'admin' &&
@@ -1903,6 +2068,8 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setShiftLogs(INITIAL_SHIFT_LOGS);
     setUsers(INITIAL_USERS);
     setCurrentUser(null);
+    setGuardChatMessages([]);
+    setGuardEventSecurityPlans([]);
     setRole('resident');
     setActiveFlat('B-402');
     setIncomingCall(null);
@@ -1937,11 +2104,15 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         expenses,
         amenities,
         bookings,
+        guardEventSecurityPlans,
+        saveGuardEventSecurityPlan,
         complaints,
         notices,
         staff,
         sosAlerts,
         shiftLogs,
+        guardChatMessages,
+        sendGuardChatMessage,
         activeShift,
         incomingCall,
         setIncomingCall,

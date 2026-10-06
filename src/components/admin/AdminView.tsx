@@ -680,7 +680,7 @@ export const AdminView: React.FC = () => {
                         <td className="py-3.5 px-4 font-mono text-slate-600">{index + 1}</td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">{bill.flatNumber}</td>
                         <td className="py-3.5 px-4 font-medium text-slate-800">{bill.ownerName}</td>
-                        <td className="py-3.5 px-4 text-slate-600">{bill.billMonth}</td>
+                        <td className="py-3.5 px-4 text-slate-600">{bill.monthYear}</td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">₹{bill.totalAmount.toLocaleString()}</td>
                         <td className="py-3.5 px-4 text-slate-600">{bill.dueDate}</td>
                         <td className="py-3.5 px-4">
