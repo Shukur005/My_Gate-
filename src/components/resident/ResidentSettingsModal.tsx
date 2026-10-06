@@ -136,7 +136,7 @@ export const ResidentSettingsModal: React.FC<ResidentSettingsModalProps> = ({ is
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 my-6 animate-fade-in relative">
+      <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[calc(100dvh-2rem)] overflow-hidden shadow-2xl border border-slate-200 my-4 animate-fade-in relative flex flex-col">
         {/* Toast Overlay */}
         {toastMessage && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-900 text-emerald-100 border border-emerald-500/50 px-5 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-bold animate-bounce">
@@ -173,7 +173,7 @@ export const ResidentSettingsModal: React.FC<ResidentSettingsModalProps> = ({ is
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSaveProfile} className="p-5 sm:p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSaveProfile} className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7 lg:p-8 space-y-6">
           {/* SECTION 1: CONTACT INFORMATION */}
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -184,8 +184,8 @@ export const ResidentSettingsModal: React.FC<ResidentSettingsModalProps> = ({ is
               <span className="text-[11px] text-slate-400 font-semibold">Flat Unit: {currentFlat?.flatNumber}</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="sm:col-span-1 lg:col-span-3">
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Resident / Owner Full Name <span className="text-rose-500">*</span>
                 </label>
@@ -202,7 +202,7 @@ export const ResidentSettingsModal: React.FC<ResidentSettingsModalProps> = ({ is
                 </div>
               </div>
 
-              <div>
+              <div className="sm:col-span-1 lg:col-span-3">
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Primary Mobile Phone Number <span className="text-rose-500">*</span>
                 </label>
@@ -219,7 +219,7 @@ export const ResidentSettingsModal: React.FC<ResidentSettingsModalProps> = ({ is
                 </div>
               </div>
 
-              <div>
+              <div className="sm:col-span-1 lg:col-span-3">
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Email Address <span className="text-rose-500">*</span>
                 </label>
@@ -236,7 +236,7 @@ export const ResidentSettingsModal: React.FC<ResidentSettingsModalProps> = ({ is
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:col-span-1 lg:col-span-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Occupancy</label>
                   <select
@@ -315,11 +315,11 @@ export const ResidentSettingsModal: React.FC<ResidentSettingsModalProps> = ({ is
             {/* Add new vehicle sub-form */}
             <div className="bg-slate-900 text-white p-3.5 rounded-2xl space-y-2 border border-slate-800">
               <span className="text-[11px] font-extrabold uppercase text-slate-300 block">Add New Vehicle Permit</span>
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                 <select
                   value={newVehicleType}
                   onChange={(e) => setNewVehicleType(e.target.value as 'Car' | 'Bike')}
-                  className="bg-slate-800 text-white text-xs font-bold border border-slate-700 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+                  className="bg-slate-800 text-white text-xs font-bold border border-slate-700 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500 sm:col-span-4"
                 >
                   <option value="Car">4-Wheeler (Car)</option>
                   <option value="Bike">2-Wheeler (Bike/Scooter)</option>
@@ -330,13 +330,13 @@ export const ResidentSettingsModal: React.FC<ResidentSettingsModalProps> = ({ is
                   placeholder="Plate No. e.g. KA-01-MJ-4021"
                   value={newVehicleNumber}
                   onChange={(e) => setNewVehicleNumber(e.target.value)}
-                  className="bg-slate-800 text-white text-xs font-bold border border-slate-700 rounded-xl px-3 py-2 flex-1 focus:outline-none focus:border-emerald-500 font-mono"
+                  className="bg-slate-800 text-white text-xs font-bold border border-slate-700 rounded-xl px-3 py-2 sm:col-span-5 focus:outline-none focus:border-emerald-500 font-mono"
                 />
 
                 <button
                   type="button"
                   onClick={handleAddVehicle}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95"
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 sm:col-span-3"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add Vehicle</span>

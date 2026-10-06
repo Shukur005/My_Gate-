@@ -8,6 +8,7 @@ import {
   Users,
   Megaphone,
   MessageSquare,
+  LifeBuoy,
   UserCheck,
   Calendar,
   Handshake,
@@ -195,9 +196,9 @@ export const SidebarPanel: React.FC = () => {
     },
     {
       id: 'helpdesk',
-      label: 'Front Desk & Gate Passes',
-      category: 'Front Desk',
-      icon: (active) => <UserCheck className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
+      label: 'Help Desk & Complaints',
+      category: 'Help Desk',
+      icon: (active) => <LifeBuoy className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'calendar',
@@ -281,7 +282,7 @@ export const SidebarPanel: React.FC = () => {
 
         {/* Clean Line Icon Rail */}
         <nav className="flex-1 w-full flex flex-col items-center space-y-1.5 overflow-y-auto overflow-x-hidden scrollbar-none py-1">
-          {navItems.map((item) => {
+          {navItems.filter((item) => role !== 'resident' || (item.id !== 'staff' && item.id !== 'reports')).map((item) => {
             const isActive = activeSidebarNav === item.id;
             const isRupeeItem = item.id === 'accounting';
 
