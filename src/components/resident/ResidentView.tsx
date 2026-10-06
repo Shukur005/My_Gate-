@@ -58,6 +58,7 @@ export const ResidentView: React.FC = () => {
     notices,
     staff,
     sosAlerts,
+    setActiveSidebarNav,
     triggerPanicAlert,
     resolveSOS,
     bookAmenity,
@@ -66,7 +67,7 @@ export const ResidentView: React.FC = () => {
     activeSidebarNav,
   } = useSociety();
 
-  const [activeTab, setActiveTab] = useState<'passes' | 'history' | 'bills' | 'amenities' | 'helpdesk' | 'notices'>('passes');
+  const [activeTab, setActiveTab] = useState<'passes' | 'history' | 'bills' | 'amenities' | 'helpdesk' | 'notices' | 'community'>('passes');
 
   // Synchronize with left sidebar selection
   useEffect(() => {
@@ -78,6 +79,8 @@ export const ResidentView: React.FC = () => {
       setActiveTab('notices');
     } else if (activeSidebarNav === 'helpdesk') {
       setActiveTab('helpdesk');
+    } else if (activeSidebarNav === 'community') {
+      setActiveTab('community');
     } else if (activeSidebarNav === 'deliveries') {
       setActiveTab('history');
     } else if (activeSidebarNav === 'dashboard') {
@@ -120,6 +123,8 @@ export const ResidentView: React.FC = () => {
   const pendingBill = myBills.find((b) => b.status === 'pending' || b.status === 'overdue');
   const myBookings = bookings.filter((b) => b.flatNumber === activeFlat);
   const myComplaints = complaints.filter((c) => c.flatNumber === activeFlat);
+  const residentProfile = flatObj.profileDetails || {};
+  const householdMembers = flatObj.familyMembers?.filter((member) => member.name.trim()) || [];
 
   const openPreApprove = (cat: VisitorCategory) => {
     setPreApproveCat(cat);
@@ -316,7 +321,10 @@ export const ResidentView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('helpdesk')}
+          onClick={() => {
+            setActiveTab('helpdesk');
+            setActiveSidebarNav('helpdesk');
+          }}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
             activeTab === 'helpdesk'
               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
@@ -339,6 +347,188 @@ export const ResidentView: React.FC = () => {
           <span>Notice Board & Staff</span>
         </button>
       </div>
+
+      {activeTab === 'community' && (
+        <section aria-labelledby="resident-family-details-title" className="space-y-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Resident profile</p>
+            <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-950" id="resident-family-details-title">
+              Family & Apartment Details
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">Your registered household, parking, and apartment information.</p>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Apartment</h3>
+                  <p className="mt-1 text-sm text-slate-500">Your unit and occupancy information</p>
+                </div>
+                <Building className="h-5 w-5 text-emerald-700" />
+              </div>
+              <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                {[
+                  ['Flat number', flatObj.flatNumber],
+                  ['Wing', flatObj.wing],
+                  ['Floor', String(flatObj.floor)],
+                  ['Occupancy', flatObj.occupancyStatus],
+                  ['Ownership type', residentProfile.ownershipType || flatObj.occupancyStatus],
+                  ['Move-in date', residentProfile.moveInDate || 'Not recorded'],
+                  ['Possession date', residentProfile.possessionDate || 'Not recorded'],
+                  ['Parking slot number', residentProfile.parkingSlot || 'Not assigned'],
+                ].map(([label, value]) => (
+                  <div className="rounded-xl bg-slate-50 p-3.5" key={label}>
+                    <dt className="text-xs font-medium text-slate-500">{label}</dt>
+                    <dd className="mt-1 break-words text-sm font-semibold text-slate-900">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              {flatObj.propertyAddress && (
+                <div className="mt-4 rounded-xl bg-slate-50 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Apartment address</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-900">{flatObj.propertyAddress}</p>
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Household</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {flatObj.familyMembersCount} registered member{flatObj.familyMembersCount === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <Users className="h-5 w-5 text-emerald-700" />
+              </div>
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                {[
+                  ['Adults', residentProfile.numberOfAdults ?? 0],
+                  ['Children', residentProfile.numberOfChildren ?? 0],
+                  ['Senior citizens', residentProfile.seniorCitizens ?? 0],
+                ].map(([label, value]) => (
+                  <div className="rounded-xl bg-emerald-50 p-3 text-center" key={label}>
+                    <p className="text-xl font-extrabold text-emerald-900">{value}</p>
+                    <p className="mt-1 text-[11px] font-medium text-emerald-800">{label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 space-y-3">
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Primary resident</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{flatObj.ownerName}</p>
+                  <p className="mt-1 text-xs text-slate-600">{residentProfile.fatherOrSpouseName ? `Father / spouse: ${residentProfile.fatherOrSpouseName}` : 'Father / spouse: Not recorded'}</p>
+                </div>
+                {householdMembers.length ? householdMembers.map((member) => (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4" key={member.id}>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{member.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {member.relationship || 'Family member'}
+                        {member.age !== undefined ? ` · Age ${member.age}` : ''}
+                      </p>
+                    </div>
+                    {member.phone && <p className="text-xs font-medium text-slate-600">{member.phone}</p>}
+                  </div>
+                )) : (
+                  <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                    Individual family member details have not been recorded.
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Resident details</h3>
+                  <p className="mt-1 text-sm text-slate-500">Personal and contact information</p>
+                </div>
+                <UserCheck className="h-5 w-5 text-emerald-700" />
+              </div>
+              <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                {[
+                  ['Phone', flatObj.phone],
+                  ['Email', flatObj.email],
+                  ['Alternate phone', residentProfile.alternatePhone || 'Not recorded'],
+                  ['Date of birth', residentProfile.dateOfBirth || 'Not recorded'],
+                  ['Gender', residentProfile.gender || 'Not recorded'],
+                  ['Occupation', residentProfile.occupation || 'Not recorded'],
+                  ['Company', residentProfile.company || 'Not recorded'],
+                  ['Pets', residentProfile.pets || 'None recorded'],
+                ].map(([label, value]) => (
+                  <div className="rounded-xl bg-slate-50 p-3.5" key={label}>
+                    <dt className="text-xs font-medium text-slate-500">{label}</dt>
+                    <dd className="mt-1 break-words text-sm font-semibold text-slate-900">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="mt-4 rounded-xl bg-slate-50 p-3.5">
+                <p className="text-xs font-medium text-slate-500">Permanent address</p>
+                <p className="mt-1 text-sm leading-6 text-slate-900">{residentProfile.permanentAddress || 'Not recorded'}</p>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Parking & vehicles</h3>
+                  <p className="mt-1 text-sm text-slate-500">Registered parking and vehicle records</p>
+                </div>
+                <Car className="h-5 w-5 text-emerald-700" />
+              </div>
+              <div className="mt-5 rounded-xl bg-emerald-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">Parking slot number</p>
+                <p className="mt-1 text-2xl font-extrabold text-emerald-950">{residentProfile.parkingSlot || 'Not assigned'}</p>
+              </div>
+              {flatObj.vehicles.length ? (
+                <ul className="mt-4 space-y-3">
+                  {flatObj.vehicles.map((vehicle) => (
+                    <li className="rounded-xl border border-slate-200 p-4" key={`${vehicle.type}-${vehicle.number}`}>
+                      <p className="text-sm font-semibold text-slate-900">{vehicle.type} · {vehicle.number}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {[vehicle.makeModel, vehicle.color, vehicle.fastTag ? `FASTag ${vehicle.fastTag}` : ''].filter(Boolean).join(' · ') || 'Additional vehicle details not recorded'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-4 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">No vehicles registered.</p>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:col-span-2">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Emergency contacts & household notes</h3>
+                  <p className="mt-1 text-sm text-slate-500">Information available to support your household</p>
+                </div>
+                <PhoneCall className="h-5 w-5 text-emerald-700" />
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {flatObj.emergencyContacts?.length ? flatObj.emergencyContacts.map((contact) => (
+                  <div className="rounded-xl bg-slate-50 p-4" key={contact.id}>
+                    <p className="text-sm font-semibold text-slate-900">{contact.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">{contact.relationship} · {contact.phone}</p>
+                    {contact.alternatePhone && <p className="mt-1 text-xs text-slate-500">Alternate: {contact.alternatePhone}</p>}
+                    {contact.bloodGroup && <p className="mt-1 text-xs text-slate-500">Blood group: {contact.bloodGroup}</p>}
+                    {contact.medicalNotes && <p className="mt-2 text-xs leading-5 text-slate-600">{contact.medicalNotes}</p>}
+                  </div>
+                )) : (
+                  <p className="text-sm text-slate-500">No emergency contacts recorded.</p>
+                )}
+              </div>
+              {(residentProfile.notes || residentProfile.specialInstructions) && (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {residentProfile.notes && <p className="rounded-xl border border-slate-200 p-4 text-sm leading-6 text-slate-700"><strong>Household notes:</strong> {residentProfile.notes}</p>}
+                  {residentProfile.specialInstructions && <p className="rounded-xl border border-slate-200 p-4 text-sm leading-6 text-slate-700"><strong>Special instructions:</strong> {residentProfile.specialInstructions}</p>}
+                </div>
+              )}
+            </section>
+          </div>
+        </section>
+      )}
 
       {/* Tab 1: Visitor Passes & Quick Pre-approvals */}
       {activeTab === 'passes' && (
