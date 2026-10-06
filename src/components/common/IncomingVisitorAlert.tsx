@@ -97,7 +97,7 @@ export const IncomingVisitorAlert: React.FC = () => {
 
               {visitor.category === 'delivery' && (
                 <button
-                  onClick={() => approvePendingVisitor(visitor.id)}
+                  onClick={() => approvePendingVisitor(visitor.id, true)}
                   className="col-span-2 bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold py-2.5 px-4 rounded-xl border border-amber-500/30 flex items-center justify-center gap-2 text-xs transition-all"
                 >
                   <PackageCheck className="w-4 h-4 text-amber-400" />
