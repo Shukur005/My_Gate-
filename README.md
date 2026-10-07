@@ -1,20 +1,22 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# MyGate
 
-# Run and deploy your AI Studio app
+This repository is organized into separate application areas:
 
-This contains everything you need to run your app locally.
+- [`frontend/`](./frontend/) contains the existing React and Vite application.
+- [`backend/`](./backend/) is a starter area for the backend service.
 
-View your app in AI Studio: https://ai.studio/apps/358a36ce-17db-4d16-b611-0b16b82b27a1
+## Run the frontend
 
-## Run Locally
+```powershell
+cd frontend
+npm install
+npm run dev
+```
 
-**Prerequisites:**  Node.js
+To build and type-check the frontend, run `npm run build` and `npm run lint` from
+the `frontend/` directory.
 
+## Backend
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+The backend folder is a starter placeholder. The backend framework, dependencies,
+and run instructions can be added there when the backend implementation begins.
