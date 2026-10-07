@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Settings,
   X,
+  ChevronLeft,
   ChevronRight,
   Send,
   CheckCircle2,
@@ -56,6 +57,8 @@ export const SidebarPanel: React.FC = () => {
   // Modals controlled by sidebar icons
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [menuFilter, setMenuFilter] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
   const [chatMessages, setChatMessages] = useState<
     Array<{ id: string; sender: string; unit: string; text: string; time: string; role: string }>
@@ -160,71 +163,70 @@ export const SidebarPanel: React.FC = () => {
       )
     : [];
 
-  // Navigation Items exactly in the order of the user's uploaded image
   const navItems: SidebarItem[] = [
     {
       id: 'search',
-      label: 'Search Directory & Records',
+      label: 'Search Menu',
       category: 'Find',
       icon: (active) => <Search className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'dashboard',
-      label: 'Dashboard Overview',
+      label: 'Dashboard',
       category: 'Overview',
       icon: (active) => <LayoutGrid className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'flats',
-      label: 'Society Census & Flats',
+      label: 'Society',
       category: 'Properties',
       icon: (active) => <Building className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'community',
-      label: role === 'guard' ? 'Guard Team & Duty Roster' : 'Residents & Community',
+      label: 'People Hub',
       category: 'People',
       icon: (active) => <Users className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'notices',
-      label: role === 'guard' ? 'Gate Repairs & Announcements' : 'Announcements & Notices',
+      label: 'mygate Club',
       category: 'Broadcasts',
       icon: (active) => <Megaphone className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'chat',
-      label: role === 'guard' ? 'Gate-to-Gate Guard Chat' : 'Community Discussions',
+      label: 'Communications',
       category: 'Messages',
       icon: (active) => <MessageSquare className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'helpdesk',
-      label: role === 'guard' ? 'Guard Duty Help Desk' : 'Help Desk & Complaints',
+      label: 'Help Desk',
       category: 'Help Desk',
       icon: (active) => <LifeBuoy className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'calendar',
-      label: role === 'guard' ? 'Events & Guard Protocols' : 'Clubhouse & Amenity Calendar',
+      label: 'Amenities',
       category: 'Facilities',
       icon: (active) => <Calendar className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'staff',
-      label: 'Staff, Guards & Handshake Vendors',
+      label: 'Vendors',
       category: 'Services',
       icon: (active) => <Handshake className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'deliveries',
-      label: 'Parcels & Gate Deliveries',
+      label: 'Assets & Inventory',
       category: 'Logistics',
       icon: (active) => <Package className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'accounting',
-      label: 'Accounts, Maintenance & Billing (₹)',
+      label: 'Accounts',
       category: 'Finance',
       // Circle with Rupee sign inside - matching the red-boxed highlight in the screenshot!
       icon: (active) => (
@@ -245,13 +247,13 @@ export const SidebarPanel: React.FC = () => {
     },
     {
       id: 'reports',
-      label: 'Financial Reports & Analytics',
+      label: 'Reports',
       category: 'Insights',
       icon: (active) => <TrendingUp className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'settings',
-      label: 'System Settings & Profile',
+      label: 'Settings',
       category: 'Preferences',
       icon: (active) => <Settings className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
@@ -259,76 +261,105 @@ export const SidebarPanel: React.FC = () => {
 
   return (
     <>
-      {/* Sleek Vertical Left Sidebar ("Side Pannle") */}
-      <aside className="w-16 h-full min-h-0 shrink-0 bg-white border-r border-slate-200/90 shadow-sm flex flex-col items-center py-3 select-none z-30 transition-all">
-        {/* Top Logo Button matching screenshot (rounded pastel yellow-cyan gradient) */}
-        <div className="mb-4">
+      <aside
+        className={`relative h-full min-h-0 shrink-0 bg-white border-r border-slate-200/90 shadow-sm flex flex-col py-3 select-none z-30 transition-[width] duration-200 ${
+          isExpanded ? 'w-64' : 'w-16'
+        }`}
+      >
+        <div className={`mb-4 flex h-10 w-full items-center ${isExpanded ? 'justify-start px-4' : 'justify-center'}`}>
           <button
             type="button"
             onClick={() => setActiveSidebarNav('dashboard')}
             title="MyGate Society Portal"
-            className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#7dd3fc] via-[#86efac] to-[#fde047] p-2 flex items-center justify-center shadow-sm hover:scale-105 transition-transform cursor-pointer relative group"
+            className={`flex h-10 items-center rounded-xl transition-transform hover:scale-[1.02] cursor-pointer ${
+              isExpanded ? 'gap-2' : 'w-10 justify-center'
+            }`}
           >
-            {/* Geometric MyGate Monogram Glyph */}
-            <div className="w-5 h-5 grid grid-cols-2 gap-0.5 p-0.5">
-              <div className="bg-slate-950 rounded-[1.5px]" />
-              <div className="bg-slate-950 rounded-[1.5px]" />
-              <div className="bg-slate-950 rounded-[1.5px]" />
-              <div className="bg-slate-950 rounded-[1.5px]" />
+            <div className="grid h-8 w-8 shrink-0 grid-cols-2 gap-0.5 rounded-lg bg-gradient-to-tr from-[#7dd3fc] via-[#86efac] to-[#fde047] p-1 shadow-sm">
+              <div className="rounded-[1.5px] bg-slate-950" />
+              <div className="rounded-[1.5px] bg-slate-950" />
+              <div className="rounded-[1.5px] bg-slate-950" />
+              <div className="rounded-[1.5px] bg-slate-950" />
             </div>
-
-            {/* Hover Tooltip */}
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none absolute left-full ml-3 px-2.5 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg shadow-xl whitespace-nowrap z-50">
-              MyGate Society Portal
-            </div>
+            {isExpanded && <span className="whitespace-nowrap text-lg font-semibold tracking-tight text-slate-900">mygate</span>}
           </button>
         </div>
 
-        {/* Clean Line Icon Rail */}
-        <nav className="flex-1 w-full flex flex-col items-center space-y-1.5 overflow-y-auto overflow-x-hidden scrollbar-none py-1">
+        <button
+          type="button"
+          onClick={() => setIsExpanded((expanded) => !expanded)}
+          aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-expanded={isExpanded}
+          title={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          className="absolute -right-3 top-4 z-40 flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-100 hover:text-slate-950"
+        >
+          {isExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+
+        {isExpanded && (
+          <div className="px-3 pb-3">
+            <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-300 px-3 text-slate-500 focus-within:border-slate-500">
+              <Search className="h-4 w-4 shrink-0" />
+              <input
+                type="search"
+                value={menuFilter}
+                onChange={(event) => setMenuFilter(event.target.value)}
+                placeholder="Search Menu"
+                aria-label="Search sidebar menu"
+                className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+              />
+            </label>
+          </div>
+        )}
+
+        <nav className={`flex-1 min-h-0 w-full space-y-1.5 overflow-y-auto overflow-x-hidden scrollbar-none py-1 ${isExpanded ? 'px-2' : ''}`}>
           {navItems.filter((item) =>
             (role !== 'resident' || (item.id !== 'staff' && item.id !== 'reports')) &&
-            (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports'))
+            (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports')) &&
+            item.label.toLowerCase().includes(menuFilter.trim().toLowerCase())
           ).map((item) => {
             const isActive = activeSidebarNav === item.id;
             const isRupeeItem = item.id === 'accounting';
 
             return (
-              <div key={item.id} className="relative group w-full flex justify-center">
+              <div key={item.id} className={`relative group w-full flex ${isExpanded ? '' : 'justify-center'}`}>
                 <button
                   type="button"
                   onClick={() => handleNavClick(item.id)}
                   aria-label={item.label}
-                  className={`w-11 h-11 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer relative ${
+                  className={`h-11 rounded-xl flex items-center transition-all cursor-pointer relative ${
+                    isExpanded ? 'w-full justify-start gap-3 px-3' : 'w-11 justify-center'
+                  } ${
                     isActive && !isRupeeItem
                       ? 'bg-slate-100 text-slate-950 shadow-inner'
                       : 'hover:bg-slate-50 text-slate-600 hover:text-slate-950'
                   }`}
                 >
                   {item.icon(isActive)}
+                  {isExpanded && <span className="truncate text-sm font-medium">{item.label}</span>}
 
-                  {/* Standard active side pill for non-rupee items */}
                   {isActive && !isRupeeItem && (
-                    <span className="absolute left-0 top-2 bottom-2 w-0.5 bg-slate-900 rounded-r-full" />
+                    <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r-full bg-slate-900" />
                   )}
                 </button>
 
-                {/* Floating Tooltip */}
-                <div className="opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none absolute left-full ml-2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap z-50 flex items-center gap-1.5">
-                  <span>{item.label}</span>
-                  {isActive && (
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-bold">
-                      Active
-                    </span>
-                  )}
-                </div>
+                {!isExpanded && (
+                  <div className="pointer-events-none absolute left-full z-50 ml-2 flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-xl transition-all duration-150 group-hover:opacity-100">
+                    <span>{item.label}</span>
+                    {isActive && <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 text-[10px] font-bold text-emerald-300">Active</span>}
+                  </div>
+                )}
               </div>
             );
           })}
+          {isExpanded && menuFilter.trim() && !navItems.some((item) =>
+            item.label.toLowerCase().includes(menuFilter.trim().toLowerCase()) &&
+            (role !== 'resident' || (item.id !== 'staff' && item.id !== 'reports')) &&
+            (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports'))
+          ) && <p className="px-3 py-2 text-sm text-slate-500">No menu items found.</p>}
         </nav>
 
-        {/* User Role Icon Indicator at Bottom */}
-        <div className="pt-2 mt-auto border-t border-slate-100 w-full flex flex-col items-center gap-2">
+        <div className={`mt-auto flex w-full items-center gap-2 border-t border-slate-100 pt-2 ${isExpanded ? 'px-4' : 'flex-col'}`}>
           <div
             title={`Logged in as ${currentUser?.name || 'User'} (${role})`}
             className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shadow-sm ring-1 ${
@@ -341,6 +372,12 @@ export const SidebarPanel: React.FC = () => {
           >
             {currentUser?.name?.charAt(0) || (role === 'resident' ? 'R' : role === 'guard' ? 'G' : 'A')}
           </div>
+          {isExpanded && (
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-800">{currentUser?.name || 'User'}</p>
+              <p className="truncate text-xs capitalize text-slate-500">{role}</p>
+            </div>
+          )}
         </div>
       </aside>
 
