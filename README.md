@@ -8,13 +8,14 @@ This repository is organized into separate application areas:
 ## Run the frontend
 
 ```powershell
-cd frontend
-npm install
+cd my_gate
+npm --prefix frontend install
 npm run dev
 ```
 
-To build and type-check the frontend, run `npm run build` and `npm run lint` from
-the `frontend/` directory.
+From the repository root, use `npm run build` to build the frontend,
+`npm run lint` to type-check it, or `npm run preview` to preview the production
+build. These root-level scripts delegate to the corresponding frontend scripts.
 
 ## Backend
 
