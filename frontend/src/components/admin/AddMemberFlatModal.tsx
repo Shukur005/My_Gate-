@@ -27,8 +27,12 @@ interface AddMemberFlatModalProps {
 }
 
 export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, onClose }) => {
-  const { flats, addFlatWithMember } = useSociety();
-  const availableFlats = flats.filter((flat) => flat.occupancyStatus === 'Vacant');
+  const { flats, societies, currentSocietyName, addFlatWithMember } = useSociety();
+  const [societyName, setSocietyName] = useState(() => currentSocietyName || societies[0]?.name || '');
+  const availableFlats = flats.filter(
+    (flat) => flat.occupancyStatus === 'Vacant' && flat.societyName === societyName
+  );
+  const availableFloors = [...new Set(availableFlats.map((flat) => flat.floor))].sort((a, b) => a - b);
 
   // Form State - Flat & Member Info
   const [flatNumber, setFlatNumber] = useState(() => availableFlats[0]?.flatNumber || '');
@@ -133,6 +137,7 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
 
     const result = addFlatWithMember({
       flatNumber,
+      societyName,
       wing: selectedFlat.wing,
       floor: selectedFlat.floor,
       ownerName,
@@ -216,10 +221,43 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
             </div>
           )}
 
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <label className="text-[11px] font-bold text-slate-700 block mb-1">Society *</label>
+            <select
+              value={societyName}
+              onChange={(event) => {
+                const nextSocietyName = event.target.value;
+                const nextAvailableFlats = flats.filter(
+                  (flat) => flat.occupancyStatus === 'Vacant' && flat.societyName === nextSocietyName
+                );
+                setSocietyName(nextSocietyName);
+                setFlatNumber(nextAvailableFlats[0]?.flatNumber || '');
+              }}
+              required
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-extrabold text-slate-900 focus:outline-none focus:border-slate-900"
+            >
+              {societies.map((society) => {
+                const vacantCount = flats.filter(
+                  (flat) => flat.occupancyStatus === 'Vacant' && flat.societyName === society.name
+                ).length;
+                return (
+                  <option key={society.id} value={society.name}>
+                    {society.name} · {vacantCount} vacant
+                  </option>
+                );
+              })}
+            </select>
+            <p className="mt-2 text-xs text-slate-500">
+              {availableFlats.length
+                ? `${availableFlats.length} vacant ${availableFlats.length === 1 ? 'flat' : 'flats'} across ${availableFloors.length} ${availableFloors.length === 1 ? 'floor' : 'floors'}: ${availableFloors.map((floor) => `Floor ${floor} (${availableFlats.filter((flat) => flat.floor === floor).length})`).join(', ')}`
+                : `No vacant flats in ${societyName}. Add a flat to this society before assigning a resident.`}
+            </p>
+          </div>
+
           {availableFlats.length === 0 ? (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              <p className="font-bold">No vacant apartments are available.</p>
-              <p className="mt-1 text-xs">Add an apartment to the inventory or mark an occupied apartment as vacant before assigning a resident.</p>
+              <p className="font-bold">No vacant flats in this society.</p>
+              <p className="mt-1 text-xs">Choose another society with available flats, add a flat, or mark an occupied flat as vacant.</p>
             </div>
           ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
@@ -240,12 +278,18 @@ export const AddMemberFlatModal: React.FC<AddMemberFlatModalProps> = ({ isOpen, 
                   value={flatNumber}
                   onChange={(e) => setFlatNumber(e.target.value)}
                   required
+                  disabled={availableFlats.length === 0}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-extrabold text-slate-900 focus:outline-none focus:border-slate-900"
                 >
-                  {availableFlats.map((flat) => (
-                    <option key={flat.flatNumber} value={flat.flatNumber}>
-                      {flat.flatNumber} · {flat.wing}, Floor {flat.floor}
-                    </option>
+                  {availableFlats.length === 0 && <option value="">No vacant flats in this society</option>}
+                  {availableFloors.map((floor) => (
+                    <optgroup key={floor} label={`Floor ${floor} · ${availableFlats.filter((flat) => flat.floor === floor).length} vacant`}>
+                      {availableFlats.filter((flat) => flat.floor === floor).map((flat) => (
+                        <option key={`${flat.societyName}-${flat.flatNumber}`} value={flat.flatNumber}>
+                          {flat.flatNumber} · {flat.wing} · {flat.flatType || 'Flat'}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 {selectedFlat?.propertyAddress && (

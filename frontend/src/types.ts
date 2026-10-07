@@ -29,6 +29,48 @@ export interface VisitorPass {
   validDurationHours?: number; // e.g. 2, 4, 8, 24
   isTimeLimited?: boolean;
   purpose?: string;
+  eventId?: string;
+  eventName?: string;
+  societyName?: string;
+  societyAddress?: string;
+  eventPassCode?: string;
+  eventEntryGate?: string;
+  eventParkingArea?: string;
+  eventGuestProtocol?: string;
+  eventParkingPlan?: string;
+}
+
+export interface DomesticWorkerPass {
+  id: string;
+  flatNumber: string;
+  residentName: string;
+  workerName: string;
+  firstName?: string;
+  lastName?: string;
+  workerPhone: string;
+  whatsappNumber?: string;
+  workType: string;
+  workerAddress?: string;
+  maritalStatus?: 'married' | 'single';
+  spouseName?: string;
+  idDocumentName?: string;
+  idDocumentDataUrl?: string;
+  passCode: string;
+  status: 'active' | 'revoked';
+  validFrom: string;
+  validThrough: string;
+  createdAt: string;
+  renewedAt?: string;
+  insideSociety: boolean;
+  lastEntryAt?: string;
+  lastExitAt?: string;
+  lastEntryGate?: string;
+}
+
+export interface DomesticWorkerVerificationResult {
+  success: boolean;
+  message: string;
+  worker?: DomesticWorkerPass;
 }
 
 export interface QRPassPayload {
@@ -52,6 +94,7 @@ export interface QRVerificationResult {
 
 export interface MaintenanceBill {
   id: string;
+  societyName?: string;
   flatNumber: string;
   ownerName: string;
   monthYear: string; // e.g. "August 2026"
@@ -64,12 +107,15 @@ export interface MaintenanceBill {
   totalAmount: number;
   status: 'paid' | 'pending' | 'overdue';
   paidDate?: string;
-  paymentMethod?: 'UPI' | 'Card' | 'NetBanking';
+  paymentMethod?: BillPaymentMethod;
   transactionRef?: string;
 }
 
+export type BillPaymentMethod = 'UPI' | 'Card' | 'NetBanking' | 'PhonePe' | 'Google Pay' | 'BHIM' | 'Super Money';
+
 export interface SocietyExpense {
   id: string;
+  societyName?: string;
   title: string;
   category: 'Security' | 'Maintenance & Repairs' | 'Utilities' | 'Gardening' | 'Elevator AMC' | 'Events' | 'Administrative';
   amount: number;
@@ -83,10 +129,12 @@ export interface SocietyExpense {
 
 export interface Amenity {
   id: string;
+  societyName?: string;
   name: string;
   category: string;
   location: string;
   hourlyRate: number;
+  isActive?: boolean;
   maxCapacity: number;
   image: string;
   availableSlots: string[];
@@ -95,6 +143,7 @@ export interface Amenity {
 
 export interface AmenityBooking {
   id: string;
+  societyName?: string;
   amenityId: string;
   amenityName: string;
   flatNumber: string;
@@ -111,7 +160,12 @@ export interface GuardEventSecurityPlan {
   eventId: string;
   guestProtocol: string;
   parkingPlan: string;
+  entryGate?: string;
+  parkingArea?: string;
   guardNotes: string;
+  assignedGuardCount?: number;
+  assignedGuardIds?: string[];
+  assignedGuardNames?: string[];
   status: 'planning' | 'ready' | 'completed';
   updatedBy: string;
   updatedAt: string;
@@ -119,6 +173,7 @@ export interface GuardEventSecurityPlan {
 
 export interface ComplaintTicket {
   id: string;
+  societyName?: string;
   flatNumber: string;
   residentName: string;
   category: 'Plumbing' | 'Electrical' | 'Elevator' | 'Security' | 'Noise/Disturbance' | 'Cleanliness' | 'Other';
@@ -133,6 +188,7 @@ export interface ComplaintTicket {
 
 export interface SocietyNotice {
   id: string;
+  societyName?: string;
   title: string;
   category: 'General' | 'Maintenance' | 'Emergency' | 'Event' | 'Financial';
   content: string;
@@ -152,9 +208,20 @@ export interface GuardChatMessage {
 
 export interface DailyStaff {
   id: string;
+  societyName?: string;
   name: string;
-  role: 'Maid' | 'Cook' | 'Driver' | 'Car Cleaner' | 'Gardener';
+  firstName?: string;
+  lastName?: string;
+  role: string;
   phone: string;
+  whatsappNumber?: string;
+  address?: string;
+  maritalStatus?: 'married' | 'single';
+  spouseName?: string;
+  identityProofType?: string;
+  identityNumber?: string;
+  identityPhotoUrl?: string;
+  assignedDuties?: string;
   rating: number;
   flatsAssigned: string[];
   isPresentToday: boolean;
@@ -204,6 +271,8 @@ export interface FlatDetail {
   flatNumber: string;
   wing: string;
   floor: number;
+  societyName?: string;
+  flatType?: string;
   propertyAddress?: string;
   ownerName: string;
   occupancyStatus: 'Owner' | 'Tenant' | 'Vacant';
@@ -215,6 +284,32 @@ export interface FlatDetail {
   outstandingDues: number;
   emergencyContacts?: EmergencyContact[];
   profileDetails?: FlatProfileDetails;
+}
+
+export interface SocietyProfile {
+  id: string;
+  name: string;
+  totalFlats: number;
+  numberOfBlocks: number;
+  wingBlock: string;
+  floors: number;
+  flatType: string;
+  ownerName: string;
+  mobileNumber: string;
+  propertyAddress: string;
+  createdAt: string;
+  bankDetails?: SocietyBankDetails;
+}
+
+export interface SocietyBankDetails {
+  accountHolderName: string;
+  accountNumber: string;
+  bankName: string;
+  ifscCode: string;
+  branchName: string;
+  bankAddress: string;
+  accountType: 'Savings' | 'Current';
+  upiId?: string;
 }
 
 export interface FlatFamilyMember {
@@ -319,6 +414,7 @@ export interface AuthUser {
   username?: string;
   // Resident details
   flatNumber?: string;
+  societyName?: string;
   wing?: string;
   occupancyStatus?: 'Owner' | 'Tenant';
   familyMembersCount?: number;

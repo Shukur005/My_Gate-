@@ -3,15 +3,18 @@ import {
   Building2,
   Check,
   ChevronRight,
+  Layers3,
   Home,
   MapPin,
   Search,
   UserRound,
   Users,
+  X,
 } from 'lucide-react';
 import { useSociety } from '../../context/SocietyContext';
 import { FlatDetail } from '../../types';
 import { AddApartmentModal } from './AddApartmentModal';
+import { AddVacantFlatModal } from './AddVacantFlatModal';
 import { AddMemberFlatModal } from './AddMemberFlatModal';
 
 type OccupancyFilter = 'all' | 'occupied' | 'Owner' | 'Tenant' | 'Vacant';
@@ -20,28 +23,73 @@ const occupancyLabel = (flat: FlatDetail) =>
   flat.occupancyStatus === 'Vacant' ? 'Available' : flat.occupancyStatus === 'Owner' ? 'Owner occupied' : 'Tenant occupied';
 
 export const ApartmentCensusSection: React.FC = () => {
-  const { flats, markFlatVacant, updateApartmentAddress } = useSociety();
+  const { flats, societies, currentSocietyName, activeSidebarNav, markFlatVacant, updateApartmentAddress } = useSociety();
+  const isPeopleHub = activeSidebarNav === 'community';
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<OccupancyFilter>('all');
   const [selectedFlat, setSelectedFlat] = useState<FlatDetail | null>(null);
   const [addressDraft, setAddressDraft] = useState('');
   const [editingAddress, setEditingAddress] = useState(false);
   const [showAddApartment, setShowAddApartment] = useState(false);
+  const [showAddFlat, setShowAddFlat] = useState(false);
   const [showAssignResident, setShowAssignResident] = useState(false);
+  const [showSocietySummary, setShowSocietySummary] = useState(false);
 
-  const occupiedFlats = flats.filter((flat) => flat.occupancyStatus !== 'Vacant');
-  const vacantCount = flats.length - occupiedFlats.length;
-  const ownerCount = flats.filter((flat) => flat.occupancyStatus === 'Owner').length;
-  const tenantCount = flats.filter((flat) => flat.occupancyStatus === 'Tenant').length;
+  const currentSocietyFlats = flats.filter((flat) => flat.societyName === currentSocietyName);
+  const occupiedFlats = currentSocietyFlats.filter((flat) => flat.occupancyStatus !== 'Vacant');
+  const vacantCount = currentSocietyFlats.length - occupiedFlats.length;
+  const ownerCount = currentSocietyFlats.filter((flat) => flat.occupancyStatus === 'Owner').length;
+  const tenantCount = currentSocietyFlats.filter((flat) => flat.occupancyStatus === 'Tenant').length;
+  const societySummaries = societies.map((society) => {
+    const societyFlats = flats.filter((flat) => flat.societyName === society.name);
+    const societyOccupied = societyFlats.filter((flat) => flat.occupancyStatus !== 'Vacant');
+    const societyVacant = societyFlats.filter((flat) => flat.occupancyStatus === 'Vacant');
+    const declaredBlocks = society.wingBlock.split(',').map((block) => block.trim()).filter(Boolean);
+    const blockNames = [...new Set([...declaredBlocks, ...societyFlats.map((flat) => flat.wing).filter(Boolean)])];
+    const blocks = blockNames.map((blockName) => {
+      const blockFlats = societyFlats.filter((flat) => flat.wing === blockName);
+      const floors = [...new Set(blockFlats.map((flat) => flat.floor))].sort((a, b) => a - b);
+      return {
+        name: blockName,
+        total: blockFlats.length,
+        occupied: blockFlats.filter((flat) => flat.occupancyStatus !== 'Vacant').length,
+        vacant: blockFlats.filter((flat) => flat.occupancyStatus === 'Vacant').length,
+        floors: floors.map((floor) => {
+          const floorFlats = blockFlats.filter((flat) => flat.floor === floor);
+          return {
+            floor,
+            occupied: floorFlats.filter((flat) => flat.occupancyStatus !== 'Vacant').length,
+            vacant: floorFlats.filter((flat) => flat.occupancyStatus === 'Vacant').length,
+          };
+        }),
+      };
+    });
+
+    return {
+      ...society,
+      totalFlats: society.totalFlats || societyFlats.length,
+      registeredFlats: societyFlats.length,
+      occupiedFlats: societyOccupied.length,
+      vacantFlats: societyVacant.length,
+      unregisteredFlats: Math.max((society.totalFlats || societyFlats.length) - societyFlats.length, 0),
+      blocks: blocks.length ? blocks : Array.from({ length: society.numberOfBlocks }, (_, index) => ({
+        name: `Block ${index + 1}`,
+        total: 0,
+        occupied: 0,
+        vacant: 0,
+        floors: [],
+      })),
+    };
+  });
   const normalizedSearch = search.trim().toLowerCase();
-  const visibleFlats = flats
+  const visibleFlats = currentSocietyFlats
     .filter((flat) => {
       const matchesFilter =
         filter === 'all' ||
         (filter === 'occupied' ? flat.occupancyStatus !== 'Vacant' : flat.occupancyStatus === filter);
       const matchesSearch =
         !normalizedSearch ||
-        [flat.flatNumber, flat.wing, flat.ownerName, flat.phone, flat.propertyAddress]
+        [flat.flatNumber, flat.societyName, flat.wing, flat.ownerName, flat.phone, flat.propertyAddress]
           .some((value) => value?.toLowerCase().includes(normalizedSearch));
       return matchesFilter && matchesSearch;
     })
@@ -52,7 +100,7 @@ export const ApartmentCensusSection: React.FC = () => {
       `Mark apartment ${flat.flatNumber} as vacant? Its resident and household details will be removed from this apartment.`
     );
     if (!confirmed) return;
-    const result = markFlatVacant(flat.flatNumber);
+    const result = markFlatVacant(flat.flatNumber, flat.societyName);
     if (!result.success) window.alert(result.message);
     setSelectedFlat(null);
   };
@@ -65,7 +113,7 @@ export const ApartmentCensusSection: React.FC = () => {
 
   const handleSaveAddress = () => {
     if (!selectedFlat) return;
-    const result = updateApartmentAddress(selectedFlat.flatNumber, addressDraft);
+    const result = updateApartmentAddress(selectedFlat.flatNumber, addressDraft, selectedFlat.societyName);
     if (!result.success) {
       window.alert(result.message);
       return;
@@ -75,14 +123,15 @@ export const ApartmentCensusSection: React.FC = () => {
   };
 
   const stats = [
-    { label: 'Total apartments', value: flats.length, icon: Building2, color: 'text-slate-700', tint: 'bg-slate-100' },
+    { label: 'Society', value: currentSocietyName, icon: Building2, color: 'text-indigo-700', tint: 'bg-indigo-50', onClick: () => setShowSocietySummary(true) },
+    { label: 'Total apartments', value: currentSocietyFlats.length, icon: Building2, color: 'text-slate-700', tint: 'bg-slate-100' },
     { label: 'Occupied', value: occupiedFlats.length, icon: Users, color: 'text-blue-700', tint: 'bg-blue-50' },
     { label: 'Available', value: vacantCount, icon: Home, color: 'text-emerald-700', tint: 'bg-emerald-50' },
     { label: 'Owners · Tenants', value: `${ownerCount} · ${tenantCount}`, icon: UserRound, color: 'text-violet-700', tint: 'bg-violet-50' },
   ];
 
   const filters: { id: OccupancyFilter; label: string; count: number }[] = [
-    { id: 'all', label: 'All apartments', count: flats.length },
+    { id: 'all', label: 'All apartments', count: currentSocietyFlats.length },
     { id: 'occupied', label: 'Occupied', count: occupiedFlats.length },
     { id: 'Vacant', label: 'Available', count: vacantCount },
     { id: 'Owner', label: 'Owner occupied', count: ownerCount },
@@ -90,15 +139,17 @@ export const ApartmentCensusSection: React.FC = () => {
   ];
 
   return (
-    <section className="space-y-5" aria-labelledby="apartment-census-title">
+    <section className={isPeopleHub ? 'space-y-0' : 'space-y-5'} aria-labelledby="apartment-census-title">
+      {!isPeopleHub && (
+        <>
       <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Property management</p>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">People Hub · {currentSocietyName}</p>
           <h1 id="apartment-census-title" className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
             Apartment census
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Manage apartment inventory, occupancy, resident profiles, and household information.
+            Manage {currentSocietyName} apartment inventory, occupancy, resident profiles, and household information.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -108,7 +159,15 @@ export const ApartmentCensusSection: React.FC = () => {
             type="button"
           >
             <Building2 className="h-4 w-4" />
-            Add apartment
+            Add society
+          </button>
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            onClick={() => setShowAddFlat(true)}
+            type="button"
+          >
+            <Home className="h-4 w-4" />
+            Add flat
           </button>
           <button
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -122,17 +181,92 @@ export const ApartmentCensusSection: React.FC = () => {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {stats.map(({ label, value, icon: Icon, color, tint }) => (
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" key={label}>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-medium text-slate-500 sm:text-sm">{label}</p>
-              <span className={`rounded-lg p-2 ${tint} ${color}`}><Icon className="h-4 w-4" /></span>
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+        {stats.map(({ label, value, icon: Icon, color, tint, onClick }) => {
+          const contents = (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-slate-500 sm:text-sm">{label}</p>
+                <span className={`rounded-lg p-2 ${tint} ${color}`}><Icon className="h-4 w-4" /></span>
+              </div>
+              <p className="mt-3 text-2xl font-bold tracking-tight text-slate-950">{value}</p>
+              {onClick && <p className="mt-1 text-xs font-medium text-indigo-700">View society breakdown</p>}
+            </>
+          );
+          return onClick ? (
+            <button className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md sm:p-5" key={label} onClick={onClick} type="button">
+              {contents}
+            </button>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" key={label}>
+              {contents}
             </div>
-            <p className="mt-3 text-2xl font-bold tracking-tight text-slate-950">{value}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {showSocietySummary && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <section aria-labelledby="society-summary-title" aria-modal="true" className="max-h-[90dvh] w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog">
+            <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Admin overview</p>
+                <h2 className="mt-1 text-lg font-bold text-slate-950" id="society-summary-title">Societies and occupancy</h2>
+              </div>
+              <button aria-label="Close society breakdown" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={() => setShowSocietySummary(false)} type="button"><X className="h-5 w-5" /></button>
+            </header>
+            <div className="max-h-[calc(90dvh-5rem)] space-y-4 overflow-y-auto p-4 sm:p-6">
+              {societySummaries.map((society) => (
+                <article className="rounded-xl border border-slate-200 p-4 sm:p-5" key={society.id}>
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-950">{society.name}</h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {society.numberOfBlocks || society.blocks.length} blocks · {society.floors || 'Floor count not set'}
+                        {society.floors === 1 ? ' floor' : typeof society.floors === 'number' && society.floors > 0 ? ' floors' : ''}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-5 gap-y-1 text-xs sm:grid-cols-4">
+                      <p><span className="text-slate-500">Planned</span><strong className="ml-1 text-slate-900">{society.totalFlats}</strong></p>
+                      <p><span className="text-slate-500">Registered</span><strong className="ml-1 text-slate-900">{society.registeredFlats}</strong></p>
+                      <p><span className="text-slate-500">Occupied</span><strong className="ml-1 text-blue-700">{society.occupiedFlats}</strong></p>
+                      <p><span className="text-slate-500">Vacant</span><strong className="ml-1 text-emerald-700">{society.vacantFlats}</strong></p>
+                    </div>
+                  </div>
+                  {society.unregisteredFlats > 0 && (
+                    <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      {society.unregisteredFlats} planned {society.unregisteredFlats === 1 ? 'flat has' : 'flats have'} not been added to inventory yet.
+                    </p>
+                  )}
+                  <div className="mt-4 space-y-2">
+                    <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500"><Layers3 className="h-4 w-4" /> Block availability</h4>
+                    {society.blocks.map((block) => (
+                      <div className="rounded-lg bg-slate-50 px-3 py-2.5" key={`${society.id}-${block.name}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-800">{block.name}</p>
+                          <p className="text-xs text-slate-600">{block.total} registered · <span className="text-blue-700">{block.occupied} occupied</span> · <span className="text-emerald-700">{block.vacant} vacant</span></p>
+                        </div>
+                        {block.floors.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {block.floors.map(({ floor, occupied, vacant }) => (
+                              <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600" key={floor}>
+                                Floor {floor}: {occupied} occupied · {vacant} vacant
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {society.blocks.length === 0 && <p className="text-xs text-slate-500">No blocks are recorded for this society yet.</p>}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+        </>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="space-y-4 border-b border-slate-200 p-4 sm:p-5">
@@ -177,10 +311,10 @@ export const ApartmentCensusSection: React.FC = () => {
           <div className="px-6 py-14 text-center">
             <Building2 className="mx-auto h-8 w-8 text-slate-300" />
             <h3 className="mt-3 text-sm font-semibold text-slate-800">
-              {flats.length === 0 ? 'No apartments in the inventory yet' : 'No apartments match your search'}
+              {currentSocietyFlats.length === 0 ? `No apartments have been added for ${currentSocietyName} yet` : 'No apartments match your search'}
             </h3>
             <p className="mt-1 text-xs text-slate-500">
-              {flats.length === 0 ? 'Add an apartment to start tracking occupancy.' : 'Try another unit, resident, wing, or address.'}
+              {currentSocietyFlats.length === 0 ? 'Add an apartment to this society to start tracking residents and household details.' : 'Try another unit, resident, wing, or address.'}
             </p>
           </div>
         ) : (
@@ -198,9 +332,10 @@ export const ApartmentCensusSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleFlats.map((flat) => (
-                  <tr className="transition hover:bg-slate-50/70" key={flat.flatNumber}>
+                  <tr className="transition hover:bg-slate-50/70" key={`${flat.societyName}-${flat.flatNumber}`}>
                     <td className="px-5 py-4">
                       <p className="font-bold text-slate-950">{flat.flatNumber}</p>
+                      <p className="mt-0.5 text-xs font-medium text-slate-600">{flat.societyName}</p>
                       <p className="mt-0.5 text-xs text-slate-500">{flat.wing} · Floor {flat.floor}</p>
                     </td>
                     <td className="max-w-xs px-5 py-4">
@@ -247,7 +382,7 @@ export const ApartmentCensusSection: React.FC = () => {
           </div>
         )}
         <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-          Showing {visibleFlats.length} of {flats.length} apartments
+          Showing {visibleFlats.length} of {currentSocietyFlats.length} apartments in {currentSocietyName}
         </div>
       </div>
 
@@ -263,6 +398,7 @@ export const ApartmentCensusSection: React.FC = () => {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Apartment profile</p>
                 <h2 id="flat-profile-title" className="mt-1 text-xl font-bold text-slate-950">{selectedFlat.flatNumber}</h2>
+                <p className="mt-1 text-xs font-medium text-slate-600">{selectedFlat.societyName}</p>
                 <p className="mt-1 text-xs text-slate-500">{selectedFlat.wing} · Floor {selectedFlat.floor}</p>
               </div>
               <button aria-label="Close apartment details" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setSelectedFlat(null)} type="button">
@@ -346,6 +482,7 @@ export const ApartmentCensusSection: React.FC = () => {
                     <dl className="mt-3 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2">
                       {([
                         ['Related person', selectedFlat.profileDetails?.fatherOrSpouseName],
+                        ['Government ID (last four)', selectedFlat.profileDetails?.governmentIdLastFour],
                         ['Date of birth', selectedFlat.profileDetails?.dateOfBirth],
                         ['Gender', selectedFlat.profileDetails?.gender],
                         ['Alternate phone', selectedFlat.profileDetails?.alternatePhone],
@@ -359,6 +496,12 @@ export const ApartmentCensusSection: React.FC = () => {
                         ['Resident notes', selectedFlat.profileDetails?.notes],
                         ['Special instructions', selectedFlat.profileDetails?.specialInstructions],
                         ['Documents', selectedFlat.profileDetails?.documents?.join(', ')],
+                        ['Current dues', selectedFlat.profileDetails?.currentDues === undefined ? undefined : `₹${selectedFlat.profileDetails.currentDues.toLocaleString('en-IN')}`],
+                        ['Previous dues', selectedFlat.profileDetails?.previousDues === undefined ? undefined : `₹${selectedFlat.profileDetails.previousDues.toLocaleString('en-IN')}`],
+                        ['Last payment date', selectedFlat.profileDetails?.lastPaymentDate],
+                        ['Last payment amount', selectedFlat.profileDetails?.lastPaymentAmount === undefined ? undefined : `₹${selectedFlat.profileDetails.lastPaymentAmount.toLocaleString('en-IN')}`],
+                        ['Payment status', selectedFlat.profileDetails?.paymentStatus],
+                        ['Payment method', selectedFlat.profileDetails?.paymentMethod],
                       ] as const).filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => (
                         <div key={label}>
                           <dt className="text-xs text-slate-500">{label}</dt>
@@ -398,7 +541,12 @@ export const ApartmentCensusSection: React.FC = () => {
                       {selectedFlat.vehicles.length ? (
                         <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
                           {selectedFlat.vehicles.map((vehicle) => (
-                            <li key={`${vehicle.type}-${vehicle.number}`}>{vehicle.type}: {vehicle.number}{vehicle.makeModel ? ` · ${vehicle.makeModel}` : ''}</li>
+                            <li key={`${vehicle.type}-${vehicle.number}`}>
+                              {vehicle.type}: {vehicle.number}
+                              {vehicle.makeModel ? ` · ${vehicle.makeModel}` : ''}
+                              {vehicle.color ? ` · ${vehicle.color}` : ''}
+                              {vehicle.fastTag ? ` · FASTag ${vehicle.fastTag}` : ''}
+                            </li>
                           ))}
                         </ul>
                       ) : <p className="mt-2 text-sm text-slate-400">No vehicles recorded</p>}
@@ -456,6 +604,7 @@ export const ApartmentCensusSection: React.FC = () => {
       )}
 
       <AddApartmentModal isOpen={showAddApartment} onClose={() => setShowAddApartment(false)} />
+      <AddVacantFlatModal isOpen={showAddFlat} onClose={() => setShowAddFlat(false)} />
       {showAssignResident && (
         <AddMemberFlatModal isOpen={showAssignResident} onClose={() => setShowAssignResident(false)} />
       )}

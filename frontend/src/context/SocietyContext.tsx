@@ -4,7 +4,10 @@ import {
   UserRole,
   VisitorPass,
   VisitorCategory,
+  DomesticWorkerPass,
+  DomesticWorkerVerificationResult,
   MaintenanceBill,
+  BillPaymentMethod,
   SocietyExpense,
   Amenity,
   AmenityBooking,
@@ -26,8 +29,11 @@ import {
   ShiftIncidentSeverity,
   AuthUser,
   SidebarNavId,
+  SocietyProfile,
+  SocietyBankDetails,
 } from '../types';
 import {
+  DEFAULT_SOCIETY_NAME,
   INITIAL_FLATS,
   INITIAL_VISITORS,
   INITIAL_BILLS,
@@ -40,6 +46,7 @@ import {
   INITIAL_SOS_ALERTS,
   INITIAL_SHIFT_LOGS,
   INITIAL_USERS,
+  INITIAL_SOCIETIES,
 } from '../data/initialData';
 
 interface IncomingGateCall {
@@ -132,20 +139,59 @@ interface SocietyContextType {
   switchUserAccount: (userId: string) => void;
   
   flats: FlatDetail[];
-  addApartment: (data: Pick<FlatDetail, 'flatNumber' | 'wing' | 'floor' | 'propertyAddress'>) => {
+  societies: SocietyProfile[];
+  currentSocietyName: string;
+  setCurrentSocietyName: (name: string) => void;
+  addSociety: (data: Omit<SocietyProfile, 'id' | 'createdAt'>) => {
     success: boolean;
     message: string;
   };
-  updateApartmentAddress: (flatNumber: string, propertyAddress: string) => { success: boolean; message: string };
-  markFlatVacant: (flatNumber: string) => { success: boolean; message: string };
+  updateSocietyBankDetails: (societyId: string, data: SocietyBankDetails) => {
+    success: boolean;
+    message: string;
+  };
+  addApartment: (data: Pick<FlatDetail, 'flatNumber' | 'wing' | 'floor' | 'propertyAddress' | 'flatType'> & { societyName: string }) => {
+    success: boolean;
+    message: string;
+  };
+  updateApartmentAddress: (flatNumber: string, propertyAddress: string, societyName?: string) => { success: boolean; message: string };
+  markFlatVacant: (flatNumber: string, societyName?: string) => { success: boolean; message: string };
   visitors: VisitorPass[];
+  domesticWorkerPasses: DomesticWorkerPass[];
+  createDomesticWorkerPass: (data: {
+    firstName: string;
+    lastName: string;
+    workerPhone: string;
+    whatsappNumber?: string;
+    workType: string;
+    workerAddress: string;
+    maritalStatus: 'married' | 'single';
+    spouseName?: string;
+    idDocumentName: string;
+    idDocumentDataUrl: string;
+  }) => {
+    success: boolean;
+    message: string;
+    pass?: DomesticWorkerPass;
+  };
+  renewDomesticWorkerPass: (passId: string) => { success: boolean; message: string };
+  revokeDomesticWorkerPass: (passId: string) => { success: boolean; message: string };
+  verifyDomesticWorkerPass: (passCode: string) => DomesticWorkerVerificationResult;
+  recordDomesticWorkerGateAction: (passId: string, action: 'entry' | 'exit', gate?: string) => {
+    success: boolean;
+    message: string;
+  };
   bills: MaintenanceBill[];
   expenses: SocietyExpense[];
   amenities: Amenity[];
+  addAmenity: (data: Omit<Amenity, 'id'>) => void;
+  updateAmenity: (amenityId: string, updates: Partial<Omit<Amenity, 'id'>>) => void;
+  deleteAmenity: (amenityId: string) => void;
   bookings: AmenityBooking[];
   guardEventSecurityPlans: GuardEventSecurityPlan[];
   saveGuardEventSecurityPlan: (
-    plan: Pick<GuardEventSecurityPlan, 'eventId' | 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'>
+    plan: Pick<GuardEventSecurityPlan, 'eventId' | 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'> &
+      Partial<Pick<GuardEventSecurityPlan, 'assignedGuardCount' | 'assignedGuardIds' | 'assignedGuardNames' | 'entryGate' | 'parkingArea'>>
   ) => { success: boolean; message: string };
   complaints: ComplaintTicket[];
   notices: SocietyNotice[];
@@ -206,7 +252,8 @@ interface SocietyContextType {
     validDurationHours?: number;
     purpose?: string;
     vehicleNumber?: string;
-  }) => VisitorPass;
+    eventId?: string;
+  }) => { success: boolean; message: string; pass?: VisitorPass };
 
   verifyAndCheckInVisitor: (
     passcodeOrToken: string,
@@ -235,6 +282,7 @@ interface SocietyContextType {
 
   addFlatWithMember: (data: {
     flatNumber: string;
+    societyName: string;
     wing: string;
     floor: number;
     ownerName: string;
@@ -272,12 +320,16 @@ interface SocietyContextType {
   ) => { success: boolean; message: string };
   deleteFlat: (flatNumber: string) => void;
 
-  payBill: (billId: string, paymentMethod: 'UPI' | 'Card' | 'NetBanking') => void;
+  payBill: (billId: string, paymentMethod: BillPaymentMethod) => void;
   createBill: (data: Omit<MaintenanceBill, 'id' | 'status'>) => void;
 
   addExpense: (data: Omit<SocietyExpense, 'id'>) => void;
 
-  bookAmenity: (amenityId: string, date: string, timeSlot: string, guestsCount: number) => { success: boolean; message: string };
+  bookAmenity: (amenityId: string, date: string, timeSlot: string, guestsCount: number) => {
+    success: boolean;
+    message: string;
+    booking?: AmenityBooking;
+  };
   cancelBooking: (bookingId: string) => void;
 
   submitComplaint: (data: Omit<ComplaintTicket, 'id' | 'createdAt' | 'status' | 'flatNumber' | 'residentName'>) => void;
@@ -287,6 +339,20 @@ interface SocietyContextType {
   deleteNotice: (noticeId: string) => void;
 
   toggleStaffAttendance: (staffId: string) => void;
+  addSocietyStaff: (data: {
+    firstName: string;
+    lastName: string;
+    role: string;
+    phone: string;
+    whatsappNumber?: string;
+    address: string;
+    maritalStatus: 'married' | 'single';
+    spouseName?: string;
+    identityProofType: string;
+    identityNumber?: string;
+    identityPhotoUrl: string;
+    assignedDuties: string;
+  }) => { success: boolean; message: string; staff?: DailyStaff };
 
   triggerSOS: (type: 'Medical' | 'Fire' | 'Security Threat' | 'Lift Trapped' | 'Panic Alert (Silent)' | 'Intrusion') => void;
   triggerPanicAlert: (notes?: string) => EmergencyAlert;
@@ -340,32 +406,78 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return 'B-402';
   });
 
+  const [societies, setSocieties] = useState<SocietyProfile[]>(() => {
+    const saved = localStorage.getItem('mygate_societies');
+    if (!saved) return INITIAL_SOCIETIES;
+
+    const savedSocieties = JSON.parse(saved) as SocietyProfile[];
+    return [
+      ...INITIAL_SOCIETIES.filter((initial) => !savedSocieties.some((society) => society.name === initial.name)),
+      ...savedSocieties,
+    ];
+  });
+
+  const [currentSocietyName, setCurrentSocietyName] = useState(() => {
+    const saved = localStorage.getItem('mygate_current_society');
+    return saved || DEFAULT_SOCIETY_NAME;
+  });
+
   // Load state from localStorage or initial fallback
   const [flats, setFlats] = useState<FlatDetail[]>(() => {
     const saved = localStorage.getItem('mygate_flats');
-    return saved ? JSON.parse(saved) : INITIAL_FLATS;
+    const storedFlats = saved ? JSON.parse(saved) as FlatDetail[] : INITIAL_FLATS;
+    return storedFlats.map((flat) => ({
+      ...flat,
+      societyName: flat.societyName || DEFAULT_SOCIETY_NAME,
+    }));
   });
 
   const [visitors, setVisitors] = useState<VisitorPass[]>(() => {
     const saved = localStorage.getItem('mygate_visitors');
-    return saved ? JSON.parse(saved) : INITIAL_VISITORS;
+    const stored = saved ? JSON.parse(saved) as VisitorPass[] : INITIAL_VISITORS;
+    return stored.map((visitor) => ({
+      ...visitor,
+      societyName: visitor.societyName ||
+        flats.find((flat) => flat.flatNumber.toUpperCase() === visitor.flatNumber.toUpperCase())?.societyName ||
+        DEFAULT_SOCIETY_NAME,
+    }));
+  });
+
+  const [domesticWorkerPasses, setDomesticWorkerPasses] = useState<DomesticWorkerPass[]>(() => {
+    const saved = localStorage.getItem('mygate_domestic_worker_passes');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [bills, setBills] = useState<MaintenanceBill[]>(() => {
     const saved = localStorage.getItem('mygate_bills');
-    return saved ? JSON.parse(saved) : INITIAL_BILLS;
+    const stored = saved ? JSON.parse(saved) as MaintenanceBill[] : INITIAL_BILLS;
+    return stored.map((bill) => ({
+      ...bill,
+      societyName: bill.societyName || flats.find((flat) => flat.flatNumber.toUpperCase() === bill.flatNumber.toUpperCase())?.societyName || DEFAULT_SOCIETY_NAME,
+    }));
   });
 
   const [expenses, setExpenses] = useState<SocietyExpense[]>(() => {
     const saved = localStorage.getItem('mygate_expenses');
-    return saved ? JSON.parse(saved) : INITIAL_EXPENSES;
+    const stored = saved ? JSON.parse(saved) as SocietyExpense[] : INITIAL_EXPENSES;
+    return stored.map((expense) => ({ ...expense, societyName: expense.societyName || DEFAULT_SOCIETY_NAME }));
   });
 
-  const [amenities] = useState<Amenity[]>(INITIAL_AMENITIES);
+  const [amenities, setAmenities] = useState<Amenity[]>(() => {
+    const saved = localStorage.getItem('mygate_amenities');
+    const stored = saved ? JSON.parse(saved) as Amenity[] : INITIAL_AMENITIES;
+    return stored.map((amenity) => ({ ...amenity, societyName: amenity.societyName || DEFAULT_SOCIETY_NAME }));
+  });
 
   const [bookings, setBookings] = useState<AmenityBooking[]>(() => {
     const saved = localStorage.getItem('mygate_bookings');
-    return saved ? JSON.parse(saved) : INITIAL_BOOKINGS;
+    const stored = saved ? JSON.parse(saved) as AmenityBooking[] : INITIAL_BOOKINGS;
+    return stored.map((booking) => ({
+      ...booking,
+      societyName: booking.societyName ||
+        flats.find((flat) => flat.flatNumber.toUpperCase() === booking.flatNumber.toUpperCase())?.societyName ||
+        DEFAULT_SOCIETY_NAME,
+    }));
   });
 
   const [guardEventSecurityPlans, setGuardEventSecurityPlans] = useState<GuardEventSecurityPlan[]>(() => {
@@ -375,17 +487,32 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [complaints, setComplaints] = useState<ComplaintTicket[]>(() => {
     const saved = localStorage.getItem('mygate_complaints');
-    return saved ? JSON.parse(saved) : INITIAL_COMPLAINTS;
+    const stored = saved ? JSON.parse(saved) as ComplaintTicket[] : INITIAL_COMPLAINTS;
+    return stored.map((ticket) => ({
+      ...ticket,
+      societyName: ticket.societyName ||
+        flats.find((flat) => flat.flatNumber.toUpperCase() === ticket.flatNumber.toUpperCase())?.societyName ||
+        DEFAULT_SOCIETY_NAME,
+    }));
   });
 
   const [notices, setNotices] = useState<SocietyNotice[]>(() => {
     const saved = localStorage.getItem('mygate_notices');
-    return saved ? JSON.parse(saved) : INITIAL_NOTICES;
+    const stored = saved ? JSON.parse(saved) as SocietyNotice[] : INITIAL_NOTICES;
+    return stored.map((notice) => ({ ...notice, societyName: notice.societyName || DEFAULT_SOCIETY_NAME }));
   });
 
   const [staff, setStaff] = useState<DailyStaff[]>(() => {
     const saved = localStorage.getItem('mygate_staff');
-    return saved ? JSON.parse(saved) : INITIAL_STAFF;
+    const stored = saved ? JSON.parse(saved) as DailyStaff[] : INITIAL_STAFF;
+    return stored.map((person) => ({
+      ...person,
+      societyName: person.societyName ||
+        [...new Set(person.flatsAssigned.map((flatNumber) =>
+          flats.find((flat) => flat.flatNumber.toUpperCase() === flatNumber.toUpperCase())?.societyName
+        ).filter((name): name is string => Boolean(name)))][0] ||
+        DEFAULT_SOCIETY_NAME,
+    }));
   });
 
   const [sosAlerts, setSosAlerts] = useState<EmergencyAlert[]>(() => {
@@ -409,6 +536,14 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Sync state to LocalStorage
   useEffect(() => {
+    localStorage.setItem('mygate_societies', JSON.stringify(societies));
+  }, [societies]);
+
+  useEffect(() => {
+    localStorage.setItem('mygate_current_society', currentSocietyName);
+  }, [currentSocietyName]);
+
+  useEffect(() => {
     localStorage.setItem('mygate_flats', JSON.stringify(flats));
   }, [flats]);
 
@@ -417,12 +552,34 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [visitors]);
 
   useEffect(() => {
+    localStorage.setItem('mygate_domestic_worker_passes', JSON.stringify(domesticWorkerPasses));
+  }, [domesticWorkerPasses]);
+
+  useEffect(() => {
+    const syncDomesticWorkerPasses = (event: StorageEvent) => {
+      if (event.key !== 'mygate_domestic_worker_passes') return;
+      try {
+        setDomesticWorkerPasses(event.newValue ? JSON.parse(event.newValue) as DomesticWorkerPass[] : []);
+      } catch (error) {
+        console.error('Unable to sync permanent staff passes from browser storage.', error);
+      }
+    };
+
+    window.addEventListener('storage', syncDomesticWorkerPasses);
+    return () => window.removeEventListener('storage', syncDomesticWorkerPasses);
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('mygate_bills', JSON.stringify(bills));
   }, [bills]);
 
   useEffect(() => {
     localStorage.setItem('mygate_expenses', JSON.stringify(expenses));
   }, [expenses]);
+
+  useEffect(() => {
+    localStorage.setItem('mygate_amenities', JSON.stringify(amenities));
+  }, [amenities]);
 
   useEffect(() => {
     localStorage.setItem('mygate_bookings', JSON.stringify(bookings));
@@ -510,8 +667,245 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [currentUser]);
 
-  // Current Flat details
-  const currentFlatObj = flats.find((f) => f.flatNumber === activeFlat) || flats[0];
+  // A resident's assigned flat is scoped to the society selected during assignment.
+  const currentFlatObj = (role === 'resident' && currentUser?.flatNumber
+    ? flats.find((flat) =>
+        flat.flatNumber.toLowerCase() === currentUser.flatNumber?.toLowerCase() &&
+        (currentUser.email
+          ? flat.email.toLowerCase() === currentUser.email.toLowerCase()
+          : flat.societyName === currentUser.societyName)
+      ) || flats.find((flat) =>
+        flat.flatNumber.toLowerCase() === currentUser.flatNumber?.toLowerCase() &&
+        flat.societyName === currentUser.societyName
+      )
+    : undefined) || flats.find((flat) => flat.flatNumber === activeFlat) || flats[0];
+
+  const getLocalDateString = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const addMonthsToDate = (dateString: string, months: number) => {
+    const [year, month, day] = dateString.split('-').map(Number);
+    const targetMonth = month - 1 + months;
+    const targetYear = year + Math.floor(targetMonth / 12);
+    const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+    const lastDay = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+    return getLocalDateString(new Date(targetYear, normalizedMonth, Math.min(day, lastDay)));
+  };
+
+  const createDomesticWorkerPass = (data: {
+    firstName: string;
+    lastName: string;
+    workerPhone: string;
+    whatsappNumber?: string;
+    workType: string;
+    workerAddress: string;
+    maritalStatus: 'married' | 'single';
+    spouseName?: string;
+    idDocumentName: string;
+    idDocumentDataUrl: string;
+  }) => {
+    if (role !== 'resident' || currentUser?.role !== 'resident' || !currentUser.flatNumber || currentUser.flatNumber !== activeFlat) {
+      return { success: false, message: 'Sign in to your resident account to register household staff.' };
+    }
+    const firstName = data.firstName.trim().replace(/\s+/g, ' ');
+    const lastName = data.lastName.trim().replace(/\s+/g, ' ');
+    const workerName = `${firstName} ${lastName}`.trim();
+    const workerPhone = data.workerPhone.trim();
+    const whatsappNumber = data.whatsappNumber?.trim() || '';
+    const workType = data.workType.trim().replace(/\s+/g, ' ');
+    const workerAddress = data.workerAddress.trim().replace(/\s+/g, ' ');
+    const spouseName = data.spouseName?.trim().replace(/\s+/g, ' ') || '';
+    const phoneDigits = workerPhone.replace(/\D/g, '');
+    if (firstName.length < 2 || firstName.length > 60 || lastName.length < 1 || lastName.length > 60) {
+      return { success: false, message: 'Enter the worker’s first and last name.' };
+    }
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      return { success: false, message: 'Enter a valid phone number (10–15 digits).'};
+    }
+    if (whatsappNumber && (whatsappNumber.replace(/\D/g, '').length < 10 || whatsappNumber.replace(/\D/g, '').length > 15)) {
+      return { success: false, message: 'Enter a valid WhatsApp number or leave it blank.' };
+    }
+    if (workType.length < 2 || workType.length > 60) {
+      return { success: false, message: 'Enter a job type such as maid, driver, cook, caregiver, or another role.' };
+    }
+    if (workerAddress.length < 5 || workerAddress.length > 300) {
+      return { success: false, message: 'Enter the worker’s current address.' };
+    }
+    if (data.maritalStatus === 'married' && (spouseName.length < 2 || spouseName.length > 120)) {
+      return { success: false, message: 'Enter the husband or wife’s name for a married worker.' };
+    }
+    if (!data.idDocumentName || !data.idDocumentDataUrl) {
+      return { success: false, message: 'Upload a photo of the worker’s identity document.' };
+    }
+    if (domesticWorkerPasses.some(
+      (pass) =>
+        pass.flatNumber === activeFlat &&
+        pass.status === 'active' &&
+        pass.workerPhone.replace(/\D/g, '') === phoneDigits
+    )) {
+      return { success: false, message: 'This worker already has an active pass for your flat.' };
+    }
+
+    const usedCodes = new Set(domesticWorkerPasses.map((pass) => pass.passCode));
+    let passCode = '';
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const candidate = String(Math.floor(1000 + Math.random() * 9000));
+      if (!usedCodes.has(candidate)) {
+        passCode = candidate;
+        break;
+      }
+    }
+    if (!passCode) {
+      return { success: false, message: 'Unable to issue a unique access code right now. Please try again.' };
+    }
+
+    const today = getLocalDateString(new Date());
+    const pass: DomesticWorkerPass = {
+      id: `DWP-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      flatNumber: activeFlat,
+      residentName: currentFlatObj?.ownerName || currentUser.name,
+      workerName,
+      firstName,
+      lastName,
+      workerPhone,
+      ...(whatsappNumber ? { whatsappNumber } : {}),
+      workType,
+      workerAddress,
+      maritalStatus: data.maritalStatus,
+      ...(data.maritalStatus === 'married' ? { spouseName } : {}),
+      idDocumentName: data.idDocumentName,
+      idDocumentDataUrl: data.idDocumentDataUrl,
+      passCode,
+      status: 'active',
+      validFrom: today,
+      validThrough: addMonthsToDate(today, 1),
+      createdAt: new Date().toISOString(),
+      insideSociety: false,
+    };
+    const updatedPasses = [pass, ...domesticWorkerPasses];
+    try {
+      localStorage.setItem('mygate_domestic_worker_passes', JSON.stringify(updatedPasses));
+    } catch (error) {
+      console.error('Unable to save the household staff pass in browser storage.', error);
+      return { success: false, message: 'The staff record could not be saved. Free up browser storage and try a smaller ID photo.' };
+    }
+    setDomesticWorkerPasses(updatedPasses);
+    return {
+      success: true,
+      message: `Monthly entry pass created for ${workerName}. Resident registration is active until ${pass.validThrough}.`,
+      pass,
+    };
+  };
+
+  const renewDomesticWorkerPass = (passId: string) => {
+    if (role !== 'resident' || currentUser?.role !== 'resident') {
+      return { success: false, message: 'Only the resident can renew this household worker pass.' };
+    }
+    const pass = domesticWorkerPasses.find((item) => item.id === passId && item.flatNumber === activeFlat);
+    if (!pass || pass.status !== 'active') {
+      return { success: false, message: 'Active worker pass was not found for this flat.' };
+    }
+    const today = getLocalDateString(new Date());
+    const renewalOpensOn = addMonthsToDate(pass.validThrough, 0);
+    const openDate = new Date(`${renewalOpensOn}T00:00:00`);
+    openDate.setDate(openDate.getDate() - 7);
+    if (today < getLocalDateString(openDate)) {
+      return { success: false, message: `Renewal opens on ${getLocalDateString(openDate)}.` };
+    }
+    const renewedThrough = addMonthsToDate(pass.validThrough < today ? today : pass.validThrough, 1);
+    setDomesticWorkerPasses((previous) => previous.map((item) => (
+      item.id === passId
+        ? { ...item, validThrough: renewedThrough, renewedAt: new Date().toISOString() }
+        : item
+    )));
+    return { success: true, message: `Monthly access renewed through ${renewedThrough}. The worker keeps the same 4-digit pass code.` };
+  };
+
+  const revokeDomesticWorkerPass = (passId: string) => {
+    if (role !== 'resident' || currentUser?.role !== 'resident') {
+      return { success: false, message: 'Only the resident can revoke this household worker pass.' };
+    }
+    const pass = domesticWorkerPasses.find((item) => item.id === passId && item.flatNumber === activeFlat);
+    if (!pass || pass.status !== 'active') {
+      return { success: false, message: 'Active worker pass was not found for this flat.' };
+    }
+    setDomesticWorkerPasses((previous) => previous.map((item) => (
+      item.id === passId ? { ...item, status: 'revoked' } : item
+    )));
+    return { success: true, message: `Access pass for ${pass.workerName} has been revoked.` };
+  };
+
+  const verifyDomesticWorkerPass = (passCode: string): DomesticWorkerVerificationResult => {
+    if (role !== 'guard' || currentUser?.role !== 'guard') {
+      return { success: false, message: 'Permanent staff passes can only be checked by gate security.' };
+    }
+    const normalizedCode = passCode.trim();
+    if (!/^\d{4}$/.test(normalizedCode)) {
+      return { success: false, message: 'Enter the worker’s four-digit access code.' };
+    }
+    const workerPass = domesticWorkerPasses.find((pass) => pass.passCode === normalizedCode);
+    if (!workerPass) {
+      return { success: false, message: 'No household worker pass matches this code. Confirm the code with the resident.' };
+    }
+    if (workerPass.status !== 'active') {
+      return { success: false, message: 'This household worker pass has been revoked. Do not allow entry.', worker: workerPass };
+    }
+    const today = getLocalDateString(new Date());
+    if (today < workerPass.validFrom || today > workerPass.validThrough) {
+      return { success: false, message: `This monthly pass expired on ${workerPass.validThrough}. Ask the resident to renew it.`, worker: workerPass };
+    }
+    return {
+      success: true,
+      message: `Verified: ${workerPass.workerName}, ${workerPass.workType}, registered to Flat ${workerPass.flatNumber} (${workerPass.residentName}).`,
+      worker: workerPass,
+    };
+  };
+
+  const recordDomesticWorkerGateAction = (passId: string, action: 'entry' | 'exit', gate = 'Main Gate 1') => {
+    if (role !== 'guard' || currentUser?.role !== 'guard') {
+      return { success: false, message: 'Only gate security can record household worker entry or exit.' };
+    }
+    const workerPass = domesticWorkerPasses.find((pass) => pass.id === passId);
+    const today = getLocalDateString(new Date());
+    if (!workerPass) {
+      return { success: false, message: 'Worker pass was not found. Entry/exit was not recorded.' };
+    }
+    if (action === 'entry' && (
+      workerPass.status !== 'active' || today < workerPass.validFrom || today > workerPass.validThrough
+    )) {
+      return { success: false, message: 'Worker pass is not active or has expired. Entry was not recorded.' };
+    }
+    if (action === 'entry' && workerPass.insideSociety) {
+      return { success: false, message: `${workerPass.workerName} is already recorded inside the society.` };
+    }
+    if (action === 'exit' && !workerPass.insideSociety) {
+      return { success: false, message: `${workerPass.workerName} is not currently recorded inside the society.` };
+    }
+
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setDomesticWorkerPasses((previous) => previous.map((pass) => (
+      pass.id === passId
+        ? {
+            ...pass,
+            insideSociety: action === 'entry',
+            ...(action === 'entry'
+              ? { lastEntryAt: now.toISOString(), lastEntryGate: gate }
+              : { lastExitAt: now.toISOString() }),
+          }
+        : pass
+    )));
+    return {
+      success: true,
+      message: action === 'entry'
+        ? `Entry recorded for ${workerPass.workerName} of Flat ${workerPass.flatNumber} at ${time}.`
+        : `Exit recorded for ${workerPass.workerName} of Flat ${workerPass.flatNumber} at ${time}.`,
+    };
+  };
 
   // Helper to generate 6 digit random passcode
   const generatePasscode = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -527,7 +921,29 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     validDurationHours?: number;
     purpose?: string;
     vehicleNumber?: string;
-  }): VisitorPass => {
+    eventId?: string;
+  }): { success: boolean; message: string; pass?: VisitorPass } => {
+    const selectedEvent = data.eventId?.startsWith('notice:')
+      ? notices.find((notice) => `notice:${notice.id}` === data.eventId && notice.category === 'Event')
+      : undefined;
+    if (data.eventId && !selectedEvent) {
+      return { success: false, message: 'The selected society event is no longer available.' };
+    }
+    if (selectedEvent) {
+      const plan = guardEventSecurityPlans.find((item) => item.eventId === data.eventId);
+      if (
+        plan?.status !== 'ready' ||
+        !plan.assignedGuardIds?.length ||
+        !plan.entryGate ||
+        !plan.parkingArea
+      ) {
+        return {
+          success: false,
+          message: 'This event pass is not available yet. The administrator must confirm the entrance, parking area, and assigned guards first.',
+        };
+      }
+    }
+
     const passcode = generatePasscode();
     const duration = data.validDurationHours && data.validDurationHours > 0 ? data.validDurationHours : 6;
     const now = new Date();
@@ -535,6 +951,20 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const idNum = Math.floor(100 + Math.random() * 900);
     const passId = `VIS-${idNum}`;
     const qrToken = `QR-VPASS-${passcode}-${idNum}`;
+    const confirmedEventPlan = selectedEvent
+      ? guardEventSecurityPlans.find((item) => item.eventId === data.eventId)
+      : undefined;
+    const passSocietyName = currentFlatObj.societyName || currentSocietyName || DEFAULT_SOCIETY_NAME;
+    const passSociety = societies.find((society) => society.name === passSocietyName);
+    let eventPassCode: string | undefined;
+    if (selectedEvent) {
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      do {
+        const digits = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        const suffix = Array.from({ length: 2 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
+        eventPassCode = `${digits}${suffix}`;
+      } while (visitors.some((visitor) => visitor.eventPassCode === eventPassCode));
+    }
 
     const newPass: VisitorPass = {
       id: passId,
@@ -556,10 +986,23 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       validDurationHours: duration,
       isTimeLimited: true,
       purpose: data.purpose,
+      eventId: selectedEvent ? data.eventId : undefined,
+      eventName: selectedEvent?.title,
+      societyName: selectedEvent ? passSocietyName : undefined,
+      societyAddress: selectedEvent ? passSociety?.propertyAddress || passSocietyName : undefined,
+      eventPassCode,
+      eventEntryGate: confirmedEventPlan?.entryGate,
+      eventParkingArea: confirmedEventPlan?.parkingArea,
+      eventGuestProtocol: confirmedEventPlan?.guestProtocol,
+      eventParkingPlan: confirmedEventPlan?.parkingPlan,
     };
 
     setVisitors((prev) => [newPass, ...prev]);
-    return newPass;
+    return {
+      success: true,
+      message: selectedEvent ? `Event pass created for ${selectedEvent.title}.` : 'Visitor pass created.',
+      pass: newPass,
+    };
   };
 
   // Helper to parse input string which could be a raw passcode, QR token, URL with ?vpass=, or JSON payload
@@ -600,10 +1043,11 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
     }
 
-    // Search by passcode, qrToken, id, or normalized phone
+    // Search by event pass code, passcode, QR token, id, or normalized phone.
     const target = visitors.find(
       (v) =>
         (v.qrToken && v.qrToken.toLowerCase() === query.toLowerCase()) ||
+        (v.eventPassCode && v.eventPassCode.toLowerCase() === query.toLowerCase()) ||
         v.passcode === query ||
         v.id.toLowerCase() === query.toLowerCase()
     );
@@ -898,6 +1342,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addFlatWithMember = (data: {
     flatNumber: string;
+    societyName: string;
     wing: string;
     floor: number;
     ownerName: string;
@@ -924,7 +1369,9 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const formattedFlatNum = data.flatNumber.toUpperCase().trim();
     const cleanUsername = data.username.trim().toLowerCase();
     const cleanEmail = data.email.trim().toLowerCase();
-    const existing = flats.find((f) => f.flatNumber.toUpperCase() === formattedFlatNum);
+    const existing = flats.find(
+      (f) => f.flatNumber.toUpperCase() === formattedFlatNum && f.societyName === data.societyName
+    );
 
     if (!existing) {
       return { success: false, message: `Apartment ${formattedFlatNum} is not in the inventory. Add it before assigning a resident.` };
@@ -964,7 +1411,9 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       profileDetails: { ...existing.profileDetails, ...data.profileDetails },
     };
 
-    setFlats((prev) => prev.map((f) => (f.flatNumber.toUpperCase() === formattedFlatNum ? newFlatEntry : f)));
+    setFlats((prev) => prev.map((f) =>
+      f.flatNumber.toUpperCase() === formattedFlatNum && f.societyName === data.societyName ? newFlatEntry : f
+    ));
 
     const residentUser: AuthUser = {
       id: `usr-res-${Date.now()}`,
@@ -975,6 +1424,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       password: data.password,
       role: 'resident',
       flatNumber: formattedFlatNum,
+      societyName: data.societyName,
       wing: newFlatEntry.wing,
       occupancyStatus: data.occupancyStatus,
       familyMembersCount: newFlatEntry.familyMembersCount,
@@ -990,6 +1440,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const newBill: MaintenanceBill = {
         id: `BILL-${Date.now().toString().slice(-6)}`,
+        societyName: data.societyName,
         flatNumber: formattedFlatNum,
         ownerName: newFlatEntry.ownerName,
         monthYear: monthStr,
@@ -1012,17 +1463,100 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   };
 
-  const addApartment = (data: Pick<FlatDetail, 'flatNumber' | 'wing' | 'floor' | 'propertyAddress'>) => {
+  const addSociety = (data: Omit<SocietyProfile, 'id' | 'createdAt'>) => {
+    const name = data.name.trim();
+    if (
+      !name ||
+      !data.wingBlock.trim() ||
+      !data.flatType.trim() ||
+      !data.ownerName.trim() ||
+      !data.mobileNumber.trim() ||
+      !data.propertyAddress.trim() ||
+      !Number.isInteger(data.totalFlats) ||
+      data.totalFlats < 1 ||
+      !Number.isInteger(data.numberOfBlocks) ||
+      data.numberOfBlocks < 1 ||
+      !Number.isInteger(data.floors) ||
+      data.floors < 1
+    ) {
+      return { success: false, message: 'Complete all required society details with valid counts.' };
+    }
+    if (societies.some((society) => society.name.toLowerCase() === name.toLowerCase())) {
+      return { success: false, message: `Society "${name}" already exists.` };
+    }
+
+    const newSociety: SocietyProfile = {
+      ...data,
+      name,
+      id: `society-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    setSocieties((previous) => [...previous, newSociety]);
+    setCurrentSocietyName(name);
+    return { success: true, message: `Society "${name}" created.` };
+  };
+
+  const updateSocietyBankDetails = (societyId: string, data: SocietyBankDetails) => {
+    if (role !== 'admin') {
+      return { success: false, message: 'Only a society admin can update bank details.' };
+    }
+    const society = societies.find((item) => item.id === societyId);
+    if (!society) {
+      return { success: false, message: 'Select a valid society before saving its bank details.' };
+    }
+
+    const accountNumber = data.accountNumber.replace(/\s/g, '');
+    const ifscCode = data.ifscCode.trim().toUpperCase();
+    const upiId = data.upiId?.trim() || '';
+    if (
+      !data.accountHolderName.trim() ||
+      !/^\d{6,18}$/.test(accountNumber) ||
+      !data.bankName.trim() ||
+      !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode) ||
+      !data.branchName.trim() ||
+      !data.bankAddress.trim() ||
+      (data.accountType !== 'Savings' && data.accountType !== 'Current') ||
+      (upiId && !/^[\w.-]{2,256}@[A-Za-z][A-Za-z0-9.-]{1,63}$/.test(upiId))
+    ) {
+      return { success: false, message: 'Enter valid account, bank, IFSC, branch, address, account type, and optional UPI details.' };
+    }
+
+    setSocieties((previous) => previous.map((item) =>
+      item.id === societyId
+        ? {
+            ...item,
+            bankDetails: {
+              ...data,
+              accountHolderName: data.accountHolderName.trim(),
+              accountNumber,
+              bankName: data.bankName.trim(),
+              ifscCode,
+              branchName: data.branchName.trim(),
+              bankAddress: data.bankAddress.trim(),
+              upiId,
+            },
+          }
+        : item
+    ));
+    return { success: true, message: `Bank details saved for ${society.name}.` };
+  };
+
+  const addApartment = (data: Pick<FlatDetail, 'flatNumber' | 'wing' | 'floor' | 'propertyAddress' | 'flatType'> & { societyName: string }) => {
     const flatNumber = data.flatNumber.trim().toUpperCase();
-    if (!flatNumber || !data.wing.trim() || !data.propertyAddress?.trim()) {
-      return { success: false, message: 'Enter the apartment number, wing, and property address.' };
+    if (!flatNumber || !data.wing.trim() || !data.propertyAddress?.trim() || !data.societyName.trim()) {
+      return { success: false, message: 'Enter the society, apartment number, wing, and property address.' };
+    }
+    if (!societies.some((society) => society.name === data.societyName)) {
+      return { success: false, message: `Society "${data.societyName}" was not found.` };
     }
     if (flats.some((flat) => flat.flatNumber.toUpperCase() === flatNumber)) {
-      return { success: false, message: `Apartment ${flatNumber} already exists in the inventory.` };
+      return { success: false, message: `Apartment ${flatNumber} already exists in the apartment inventory.` };
     }
 
     const newApartment: FlatDetail = {
       flatNumber,
+      societyName: data.societyName,
+      flatType: data.flatType,
       wing: data.wing.trim(),
       floor: Number(data.floor) || 1,
       propertyAddress: data.propertyAddress.trim(),
@@ -1040,22 +1574,24 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return { success: true, message: `Apartment ${flatNumber} added as vacant.` };
   };
 
-  const updateApartmentAddress = (flatNumber: string, propertyAddress: string) => {
+  const updateApartmentAddress = (flatNumber: string, propertyAddress: string, societyName?: string) => {
     const normalizedAddress = propertyAddress.trim();
     if (!normalizedAddress) {
       return { success: false, message: 'Apartment address cannot be empty.' };
     }
-    if (!flats.some((flat) => flat.flatNumber === flatNumber)) {
+    if (!flats.some((flat) => flat.flatNumber === flatNumber && (!societyName || flat.societyName === societyName))) {
       return { success: false, message: `Apartment ${flatNumber} was not found.` };
     }
     setFlats((prev) =>
-      prev.map((flat) => (flat.flatNumber === flatNumber ? { ...flat, propertyAddress: normalizedAddress } : flat))
+      prev.map((flat) => (flat.flatNumber === flatNumber && (!societyName || flat.societyName === societyName)
+        ? { ...flat, propertyAddress: normalizedAddress }
+        : flat))
     );
     return { success: true, message: `Address for apartment ${flatNumber} updated.` };
   };
 
-  const markFlatVacant = (flatNumber: string) => {
-    const apartment = flats.find((flat) => flat.flatNumber === flatNumber);
+  const markFlatVacant = (flatNumber: string, societyName?: string) => {
+    const apartment = flats.find((flat) => flat.flatNumber === flatNumber && (!societyName || flat.societyName === societyName));
     if (!apartment) return { success: false, message: `Apartment ${flatNumber} was not found.` };
     if (apartment.occupancyStatus === 'Vacant') {
       return { success: false, message: `Apartment ${flatNumber} is already vacant.` };
@@ -1063,7 +1599,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setFlats((prev) =>
       prev.map((flat) =>
-        flat.flatNumber === flatNumber
+        flat.flatNumber === flatNumber && (!societyName || flat.societyName === societyName)
           ? {
               ...flat,
               ownerName: '',
@@ -1080,7 +1616,10 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
     setUsers((prev) =>
       prev.map((user) =>
-        user.role === 'resident' && user.flatNumber === flatNumber
+        user.role === 'resident' &&
+        user.flatNumber === flatNumber &&
+        (user.societyName === apartment.societyName ||
+          (!user.societyName && apartment.societyName === DEFAULT_SOCIETY_NAME))
           ? { ...user, flatNumber: undefined, wing: undefined, occupancyStatus: undefined, familyMembersCount: undefined, vehicleNumber: undefined }
           : user
       )
@@ -1092,7 +1631,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setFlats((prev) => prev.filter((f) => f.flatNumber !== flatNumber));
   };
 
-  const payBill = (billId: string, paymentMethod: 'UPI' | 'Card' | 'NetBanking') => {
+  const payBill = (billId: string, paymentMethod: BillPaymentMethod) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const txnRef = `${paymentMethod}-${Math.floor(1000000000 + Math.random() * 9000000000)}`;
 
@@ -1102,7 +1641,8 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
           // Update flat's outstanding dues
           setFlats((prevFlats) =>
             prevFlats.map((f) =>
-              f.flatNumber === b.flatNumber
+              f.flatNumber === b.flatNumber &&
+              (!b.societyName || f.societyName === b.societyName)
                 ? { ...f, outstandingDues: Math.max(0, f.outstandingDues - b.totalAmount) }
                 : f
             )
@@ -1123,6 +1663,10 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const createBill = (data: Omit<MaintenanceBill, 'id' | 'status'>) => {
     const newBill: MaintenanceBill = {
       ...data,
+      societyName: data.societyName || flats.find((flat) =>
+        flat.flatNumber.toUpperCase() === data.flatNumber.toUpperCase() &&
+        flat.societyName === currentSocietyName
+      )?.societyName || currentSocietyName,
       id: `BILL-${Date.now().toString().slice(-6)}`,
       status: 'pending',
     };
@@ -1131,7 +1675,10 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Update flat dues
     setFlats((prevFlats) =>
       prevFlats.map((f) =>
-        f.flatNumber === data.flatNumber ? { ...f, outstandingDues: f.outstandingDues + data.totalAmount } : f
+        f.flatNumber === data.flatNumber &&
+        (!newBill.societyName || f.societyName === newBill.societyName)
+          ? { ...f, outstandingDues: f.outstandingDues + data.totalAmount }
+          : f
       )
     );
   };
@@ -1139,14 +1686,30 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addExpense = (data: Omit<SocietyExpense, 'id'>) => {
     const newExp: SocietyExpense = {
       ...data,
+      societyName: currentSocietyName,
       id: `EXP-${Date.now().toString().slice(-5)}`,
     };
     setExpenses((prev) => [newExp, ...prev]);
   };
 
+  const addAmenity = (data: Omit<Amenity, 'id'>) => {
+    setAmenities((prev) => [...prev, { ...data, societyName: currentSocietyName, id: `AM-${Date.now()}` }]);
+  };
+
+  const updateAmenity = (amenityId: string, updates: Partial<Omit<Amenity, 'id'>>) => {
+    setAmenities((prev) => prev.map((amenity) => (
+      amenity.id === amenityId ? { ...amenity, ...updates } : amenity
+    )));
+  };
+
+  const deleteAmenity = (amenityId: string) => {
+    setAmenities((prev) => prev.filter((amenity) => amenity.id !== amenityId));
+  };
+
   const bookAmenity = (amenityId: string, date: string, timeSlot: string, guestsCount: number) => {
     const targetAmenity = amenities.find((a) => a.id === amenityId);
     if (!targetAmenity) return { success: false, message: 'Amenity not found.' };
+    if (targetAmenity.isActive === false) return { success: false, message: 'This amenity is currently unavailable.' };
 
     // Check existing booking conflict
     const conflict = bookings.find(
@@ -1160,6 +1723,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const price = targetAmenity.hourlyRate;
     const newBooking: AmenityBooking = {
       id: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+      societyName: targetAmenity.societyName || currentFlatObj.societyName || currentSocietyName,
       amenityId,
       amenityName: targetAmenity.name,
       flatNumber: activeFlat,
@@ -1173,7 +1737,11 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     setBookings((prev) => [newBooking, ...prev]);
-    return { success: true, message: `Booking confirmed for ${targetAmenity.name}!` };
+    return {
+      success: true,
+      message: `Booking reserved for ${targetAmenity.name}. The administrator must confirm the event plan before the pass can be downloaded.`,
+      booking: newBooking,
+    };
   };
 
   const cancelBooking = (bookingId: string) => {
@@ -1181,13 +1749,34 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const saveGuardEventSecurityPlan = (
-    plan: Pick<GuardEventSecurityPlan, 'eventId' | 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'>
+    plan: Pick<GuardEventSecurityPlan, 'eventId' | 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'> &
+      Partial<Pick<GuardEventSecurityPlan, 'assignedGuardCount' | 'assignedGuardIds' | 'assignedGuardNames' | 'entryGate' | 'parkingArea'>>
   ): { success: boolean; message: string } => {
-    if (role !== 'guard' || currentUser?.role !== 'guard') {
-      return { success: false, message: 'Only a signed-in guard can update event security plans.' };
+    const isAdmin = role === 'admin' && currentUser?.role === 'admin';
+    if (!isAdmin) {
+      return { success: false, message: 'Only a signed-in society administrator can confirm event security plans.' };
     }
-    if (!plan.eventId || !plan.guestProtocol.trim() || !plan.parkingPlan.trim()) {
-      return { success: false, message: 'Add both guest-entry and vehicle-parking instructions before saving.' };
+    if (
+      !plan.eventId ||
+      !plan.guestProtocol.trim() ||
+      !plan.parkingPlan.trim() ||
+      !plan.entryGate?.trim() ||
+      !plan.parkingArea?.trim()
+    ) {
+      return { success: false, message: 'Select the event entrance and parking area, and add guest-entry and parking instructions.' };
+    }
+    const assignedGuardIds = [...new Set(plan.assignedGuardIds || [])];
+    const assignedGuards = users.filter((user) => assignedGuardIds.includes(user.id) && user.role === 'guard' && user.guardStatus !== 'inactive');
+    if (assignedGuards.length < 1) {
+      return { success: false, message: 'Assign at least one active guard before confirming the event.' };
+    }
+    const isKnownSocietyEvent = plan.eventId.startsWith('notice:')
+      ? notices.some((notice) => `notice:${notice.id}` === plan.eventId && notice.category === 'Event')
+      : plan.eventId.startsWith('booking:')
+        ? bookings.some((booking) => `booking:${booking.id}` === plan.eventId && booking.status === 'confirmed')
+        : false;
+    if (!isKnownSocietyEvent) {
+      return { success: false, message: 'The selected society event was not found or is no longer active.' };
     }
 
     const updatedPlan: GuardEventSecurityPlan = {
@@ -1195,6 +1784,11 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       guestProtocol: plan.guestProtocol.trim(),
       parkingPlan: plan.parkingPlan.trim(),
       guardNotes: plan.guardNotes.trim(),
+      assignedGuardCount: assignedGuards.length,
+      assignedGuardIds: assignedGuards.map((guard) => guard.id),
+      assignedGuardNames: assignedGuards.map((guard) => guard.name),
+      entryGate: plan.entryGate.trim(),
+      parkingArea: plan.parkingArea.trim(),
       updatedBy: currentUser.name,
       updatedAt: new Date().toISOString(),
     };
@@ -1203,7 +1797,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedPlan,
       ...previous.filter((existing) => existing.eventId !== updatedPlan.eventId),
     ]);
-    return { success: true, message: 'Event security plan saved.' };
+    return { success: true, message: 'Admin confirmation saved. Assigned guards and residents can now see the final event details.' };
   };
 
   const submitComplaint = (data: Omit<ComplaintTicket, 'id' | 'createdAt' | 'status' | 'flatNumber' | 'residentName'>) => {
@@ -1215,6 +1809,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createdAt: nowStr,
       status: 'open',
       ...data,
+      societyName: currentFlatObj.societyName || currentSocietyName,
     };
     setComplaints((prev) => [newTkt, ...prev]);
   };
@@ -1245,6 +1840,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: `NOT-${Math.floor(100 + Math.random() * 900)}`,
       date: todayStr,
       ...data,
+      societyName: currentSocietyName,
     };
     setNotices((prev) => [newNotice, ...prev]);
   };
@@ -1295,9 +1891,95 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
   };
 
+  const addSocietyStaff = (data: {
+    firstName: string;
+    lastName: string;
+    role: string;
+    phone: string;
+    whatsappNumber?: string;
+    address: string;
+    maritalStatus: 'married' | 'single';
+    spouseName?: string;
+    identityProofType: string;
+    identityNumber?: string;
+    identityPhotoUrl: string;
+    assignedDuties: string;
+  }): { success: boolean; message: string; staff?: DailyStaff } => {
+    if (role !== 'admin' || currentUser?.role !== 'admin') {
+      return { success: false, message: 'Only a signed-in administrator can add society staff or assign duties.' };
+    }
+
+    const firstName = data.firstName.trim().replace(/\s+/g, ' ');
+    const lastName = data.lastName.trim().replace(/\s+/g, ' ');
+    const roleName = data.role.trim().replace(/\s+/g, ' ');
+    const phone = data.phone.trim();
+    const whatsappNumber = data.whatsappNumber?.trim() || '';
+    const address = data.address.trim().replace(/\s+/g, ' ');
+    const spouseName = data.spouseName?.trim().replace(/\s+/g, ' ') || '';
+    const assignedDuties = data.assignedDuties.trim().replace(/\s+/g, ' ');
+
+    if (firstName.length < 2 || firstName.length > 60 || lastName.length < 1 || lastName.length > 60) {
+      return { success: false, message: 'Enter the staff member’s first and last name.' };
+    }
+    if (roleName.length < 2 || roleName.length > 80) {
+      return { success: false, message: 'Enter the staff member’s job title.' };
+    }
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      return { success: false, message: 'Enter a valid mobile number (10–15 digits).' };
+    }
+    const whatsappDigits = whatsappNumber.replace(/\D/g, '');
+    if (whatsappNumber && (whatsappDigits.length < 10 || whatsappDigits.length > 15)) {
+      return { success: false, message: 'Enter a valid WhatsApp number or leave it blank.' };
+    }
+    if (address.length < 5 || address.length > 300 || assignedDuties.length < 3 || assignedDuties.length > 500) {
+      return { success: false, message: 'Enter the staff member’s address and assigned duties.' };
+    }
+    if (data.maritalStatus === 'married' && (spouseName.length < 2 || spouseName.length > 120)) {
+      return { success: false, message: 'Enter the husband or wife’s name for a married staff member.' };
+    }
+    if (!data.identityProofType.trim() || !data.identityPhotoUrl) {
+      return { success: false, message: 'Select an ID proof type and upload its photo.' };
+    }
+
+    const name = `${firstName} ${lastName}`;
+    if (staff.some((person) => person.phone.replace(/\D/g, '') === phoneDigits && person.name.toLowerCase() === name.toLowerCase())) {
+      return { success: false, message: 'This staff member is already registered.' };
+    }
+    const newStaff: DailyStaff = {
+      id: `ST-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      societyName: currentSocietyName,
+      name,
+      firstName,
+      lastName,
+      role: roleName,
+      phone,
+      ...(whatsappNumber ? { whatsappNumber } : {}),
+      address,
+      maritalStatus: data.maritalStatus,
+      ...(data.maritalStatus === 'married' ? { spouseName } : {}),
+      identityProofType: data.identityProofType.trim(),
+      ...(data.identityNumber?.trim() ? { identityNumber: data.identityNumber.trim() } : {}),
+      identityPhotoUrl: data.identityPhotoUrl,
+      assignedDuties,
+      rating: 0,
+      flatsAssigned: [],
+      isPresentToday: false,
+    };
+    const updatedStaff = [newStaff, ...staff];
+    try {
+      localStorage.setItem('mygate_staff', JSON.stringify(updatedStaff));
+    } catch (error) {
+      console.error('Unable to save society staff in browser storage.', error);
+      return { success: false, message: 'Could not save the staff record. Free up browser storage and try a smaller ID photo.' };
+    }
+    setStaff(updatedStaff);
+    return { success: true, message: `${name} has been added to the society staff roster.`, staff: newStaff };
+  };
+
   const triggerSOS = (type: 'Medical' | 'Fire' | 'Security Threat' | 'Lift Trapped' | 'Panic Alert (Silent)' | 'Intrusion') => {
     const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const targetFlat = flats.find((f) => f.flatNumber === activeFlat) || currentFlatObj;
+    const targetFlat = currentFlatObj;
     const newSOS: EmergencyAlert = {
       id: `SOS-${Date.now().toString().slice(-4)}`,
       flatNumber: activeFlat,
@@ -1316,7 +1998,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const triggerPanicAlert = (notes?: string): EmergencyAlert => {
     const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const targetFlat = flats.find((f) => f.flatNumber === activeFlat) || currentFlatObj;
+    const targetFlat = currentFlatObj;
     const panicAlert: EmergencyAlert = {
       id: `PANIC-${Date.now().toString().slice(-4)}`,
       flatNumber: activeFlat,
@@ -1638,6 +2320,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
           phone: flat.phone,
           role: 'resident',
           flatNumber: flat.flatNumber,
+          societyName: flat.societyName,
           wing: flat.wing,
           occupancyStatus: flat.occupancyStatus === 'Vacant' ? 'Owner' : flat.occupancyStatus,
           familyMembersCount: flat.familyMembersCount,
@@ -1659,11 +2342,23 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return { success: false, message: 'Incorrect password. Please check your password and try again.' };
     }
 
-    setCurrentUser(matched);
     setRole('resident');
     if (matched.flatNumber) {
       setActiveFlat(matched.flatNumber);
     }
+    const residentFlat = flats.find((flat) =>
+      flat.flatNumber.toLowerCase() === matched!.flatNumber?.toLowerCase() &&
+      (matched!.email ? flat.email.toLowerCase() === matched!.email.toLowerCase() : flat.ownerName === matched!.name)
+    ) || flats.find((flat) => flat.flatNumber.toLowerCase() === matched!.flatNumber?.toLowerCase());
+    const residentSocietyName = residentFlat?.societyName || matched.societyName;
+    if (residentSocietyName) {
+      matched = { ...matched, societyName: residentSocietyName };
+      setUsers((previous) => previous.map((user) =>
+        user.id === matched!.id ? { ...user, societyName: residentSocietyName } : user
+      ));
+      setCurrentSocietyName(residentSocietyName);
+    }
+    setCurrentUser(matched);
     return {
       success: true,
       message: `Welcome back, ${matched.name}! Authenticated for Flat ${matched.flatNumber}.`,
@@ -1710,6 +2405,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       phone: data.phone.trim(),
       role: 'resident',
       flatNumber: cleanFlat,
+      societyName: currentSocietyName,
       wing,
       occupancyStatus: data.occupancyStatus || 'Owner',
       familyMembersCount: data.familyMembersCount || 2,
@@ -1719,10 +2415,13 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     // Ensure flat exists in flats directory
-    const existingFlatIndex = flats.findIndex((f) => f.flatNumber.toLowerCase() === cleanFlat.toLowerCase());
+    const existingFlatIndex = flats.findIndex(
+      (flat) => flat.flatNumber.toLowerCase() === cleanFlat.toLowerCase() && flat.societyName === currentSocietyName
+    );
     if (existingFlatIndex === -1) {
       const newFlat: FlatDetail = {
         flatNumber: cleanFlat,
+        societyName: currentSocietyName,
         wing,
         floor: parseInt(cleanFlat.replace(/\D/g, '').charAt(0) || '1', 10),
         ownerName: data.name.trim(),
@@ -1835,6 +2534,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       email: cleanEmail,
       phone: data.phone.trim(),
       role: 'guard',
+      societyName: currentSocietyName,
       password: 'guard123',
       badgeId: cleanBadge,
       assignedGate: data.assignedGate.trim(),
@@ -1935,6 +2635,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       email: `${cleanBadge.toLowerCase()}@security.emerald.org`,
       phone: data.phone?.trim() || '+1 (555) 019-0000',
       role: 'guard',
+      societyName: currentSocietyName,
       badgeId: cleanBadge,
       assignedGate: data.gateStation || 'Main Gate 1',
       shiftType: data.shiftType || 'Morning',
@@ -2056,10 +2757,14 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const resetToDefaultData = () => {
     localStorage.clear();
+    setSocieties(INITIAL_SOCIETIES);
+    setCurrentSocietyName(DEFAULT_SOCIETY_NAME);
     setFlats(INITIAL_FLATS);
     setVisitors(INITIAL_VISITORS);
+    setDomesticWorkerPasses([]);
     setBills(INITIAL_BILLS);
     setExpenses(INITIAL_EXPENSES);
+    setAmenities(INITIAL_AMENITIES);
     setBookings(INITIAL_BOOKINGS);
     setComplaints(INITIAL_COMPLAINTS);
     setNotices(INITIAL_NOTICES);
@@ -2096,13 +2801,27 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         logout,
         switchUserAccount,
         flats,
+        societies,
+        currentSocietyName,
+        setCurrentSocietyName,
+        addSociety,
+        updateSocietyBankDetails,
         addApartment,
         updateApartmentAddress,
         markFlatVacant,
         visitors,
+        domesticWorkerPasses,
+        createDomesticWorkerPass,
+        renewDomesticWorkerPass,
+        revokeDomesticWorkerPass,
+        verifyDomesticWorkerPass,
+        recordDomesticWorkerGateAction,
         bills,
         expenses,
         amenities,
+        addAmenity,
+        updateAmenity,
+        deleteAmenity,
         bookings,
         guardEventSecurityPlans,
         saveGuardEventSecurityPlan,
@@ -2145,6 +2864,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addNotice,
         deleteNotice,
         toggleStaffAttendance,
+        addSocietyStaff,
         triggerSOS,
         triggerPanicAlert,
         dispatchGuardToEmergency,

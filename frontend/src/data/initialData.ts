@@ -12,11 +12,57 @@ import {
   GuardShiftLog,
   ShiftIncident,
   AuthUser,
+  SocietyProfile,
 } from '../types';
+
+export const DEFAULT_SOCIETY_NAME = 'The North Tower';
+
+export const INITIAL_SOCIETIES: SocietyProfile[] = [
+  {
+    id: 'society-north-tower',
+    name: DEFAULT_SOCIETY_NAME,
+    totalFlats: 0,
+    numberOfBlocks: 0,
+    wingBlock: '',
+    floors: 0,
+    flatType: '',
+    ownerName: '',
+    mobileNumber: '',
+    propertyAddress: '',
+    createdAt: '',
+  },
+  {
+    id: 'society-vedanta-niwas',
+    name: 'Vedanta Niwas',
+    totalFlats: 0,
+    numberOfBlocks: 0,
+    wingBlock: '',
+    floors: 0,
+    flatType: '',
+    ownerName: '',
+    mobileNumber: '',
+    propertyAddress: '',
+    createdAt: '',
+  },
+  {
+    id: 'society-emerald-palms',
+    name: 'Emerald Palms Heights',
+    totalFlats: 0,
+    numberOfBlocks: 0,
+    wingBlock: '',
+    floors: 0,
+    flatType: '',
+    ownerName: '',
+    mobileNumber: '',
+    propertyAddress: '',
+    createdAt: '',
+  },
+];
 
 export const INITIAL_FLATS: FlatDetail[] = [
   {
     flatNumber: 'B-402',
+    societyName: DEFAULT_SOCIETY_NAME,
     wing: 'B Wing',
     floor: 4,
     ownerName: 'Alex Morgan',
@@ -36,6 +82,7 @@ export const INITIAL_FLATS: FlatDetail[] = [
   },
   {
     flatNumber: 'A-101',
+    societyName: DEFAULT_SOCIETY_NAME,
     wing: 'A Wing',
     floor: 1,
     ownerName: 'Priya Sharma',
@@ -51,6 +98,7 @@ export const INITIAL_FLATS: FlatDetail[] = [
   },
   {
     flatNumber: 'A-304',
+    societyName: DEFAULT_SOCIETY_NAME,
     wing: 'A Wing',
     floor: 3,
     ownerName: 'David Chen',
@@ -63,6 +111,7 @@ export const INITIAL_FLATS: FlatDetail[] = [
   },
   {
     flatNumber: 'C-201',
+    societyName: DEFAULT_SOCIETY_NAME,
     wing: 'C Wing',
     floor: 2,
     ownerName: 'Sunita Patel',
@@ -78,6 +127,7 @@ export const INITIAL_FLATS: FlatDetail[] = [
   },
   {
     flatNumber: 'B-103',
+    societyName: DEFAULT_SOCIETY_NAME,
     wing: 'B Wing',
     floor: 1,
     ownerName: 'Michael Brown',
@@ -822,4 +872,3 @@ export const INITIAL_USERS: AuthUser[] = [
     createdAt: '2026-01-10T10:00:00Z',
   },
 ];
-

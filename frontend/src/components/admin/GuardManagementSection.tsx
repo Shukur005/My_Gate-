@@ -79,7 +79,7 @@ const sectionTitleClassName = 'text-xs font-bold text-slate-800';
 const sectionSubTitleClassName = 'text-[10px] text-slate-500';
 
 export const GuardManagementSection: React.FC = () => {
-  const { users, shiftLogs, createGuard, updateGuard } = useSociety();
+  const { users, shiftLogs, createGuard, updateGuard, societies, currentSocietyName } = useSociety();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [historyGuardId, setHistoryGuardId] = useState<string | null>(null);
@@ -92,13 +92,17 @@ export const GuardManagementSection: React.FC = () => {
   const guards = useMemo(
     () =>
       users
-        .filter((user) => user.role === 'guard')
+        .filter((user) => user.role === 'guard' &&
+          (user.societyName === currentSocietyName ||
+            (!user.societyName && currentSocietyName === societies[0]?.name)))
         .sort((first, second) => first.name.localeCompare(second.name)),
-    [users]
+    [users, currentSocietyName, societies]
   );
   const activeCount = guards.filter((guard) => guard.guardStatus !== 'inactive').length;
   const inactiveCount = guards.length - activeCount;
-  const activeShiftCount = shiftLogs.filter((shift) => shift.status === 'active').length;
+  const activeShiftCount = shiftLogs.filter((shift) =>
+    shift.status === 'active' && guards.some((guard) => guard.name === shift.guardName)
+  ).length;
 
   const filteredGuards = guards.filter((guard) => {
     const query = search.trim().toLowerCase();
@@ -112,6 +116,10 @@ export const GuardManagementSection: React.FC = () => {
 
   const filteredShifts = shiftLogs
     .filter((shift) => {
+      const belongsToSelectedSociety = guards.some((guard) =>
+        (guard.badgeId && guard.badgeId === shift.guardBadgeId) || guard.name === shift.guardName
+      );
+      if (!belongsToSelectedSociety) return false;
       if (!historyGuardId) return true;
       const guard = guards.find((item) => item.id === historyGuardId);
       return guard?.badgeId === shift.guardBadgeId || guard?.name === shift.guardName;
@@ -264,7 +272,7 @@ export const GuardManagementSection: React.FC = () => {
             </div>
             <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900">Guard roster & duty management</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Manage guard profiles, gate assignments, shift schedules, and historical duty records.
+              Manage {currentSocietyName} guard profiles, gate assignments, shift schedules, and duty history.
             </p>
           </div>
           <button

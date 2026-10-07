@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { VisitorPass } from '../../types';
 import { useSociety } from '../../context/SocietyContext';
@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Ban,
   PlusCircle,
+  Download,
 } from 'lucide-react';
 
 interface QRVisitorPassCardProps {
@@ -35,13 +36,24 @@ export const QRVisitorPassCard: React.FC<QRVisitorPassCardProps> = ({
   showActions = true,
   onOpenPublicView,
 }) => {
-  const { extendPassValidity, revokeVisitorPass } = useSociety();
+  const { extendPassValidity, revokeVisitorPass, guardEventSecurityPlans, currentSocietyName } = useSociety();
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [timeLeftStr, setTimeLeftStr] = useState<string>('');
   const [isExpired, setIsExpired] = useState(false);
   const [extendHours, setExtendHours] = useState(2);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const qrCodeRef = useRef<HTMLDivElement>(null);
+  const confirmedEventPlan = guardEventSecurityPlans.find((plan) => plan.eventId === pass.eventId);
+  const isConfirmedEventPass = Boolean(
+    pass.eventId &&
+    pass.eventPassCode &&
+    confirmedEventPlan?.status === 'ready' &&
+    confirmedEventPlan.assignedGuardIds?.length &&
+    confirmedEventPlan.entryGate &&
+    confirmedEventPlan.parkingArea
+  );
+  const societyName = pass.societyName || currentSocietyName || 'Society';
 
   // Generate share URL
   const baseUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
@@ -122,12 +134,13 @@ export const QRVisitorPassCard: React.FC<QRVisitorPassCardProps> = ({
       : `Valid on: ${pass.expectedDate}`;
 
     const text = encodeURIComponent(
-      `🏢 *Greenwood Heights Visitor Pass*\n` +
+      `🏢 *Greenvalley · ${societyName} Visitor Pass*\n` +
       `Hello ${pass.visitorName}, here is your digital entry pass to visit Flat ${pass.flatNumber} (${pass.residentName}):\n\n` +
+      `${pass.eventPassCode ? `🎟️ *Event Pass Code:* ${pass.eventPassCode}\n` : ''}` +
       `🔗 *Open Digital QR Pass:* ${shareUrl}\n\n` +
       `🔑 *Gate Backup Passcode:* ${pass.passcode}\n` +
       `⏳ *${expText}*\n\n` +
-      `Show the QR code to security at Main Gate for instant entry.`
+      `Show the QR code to security at ${pass.eventEntryGate || 'the society gate'} for entry.`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
@@ -146,6 +159,118 @@ export const QRVisitorPassCard: React.FC<QRVisitorPassCardProps> = ({
       setActionNotice(res.message);
       setTimeout(() => setActionNotice(null), 3000);
     }
+  };
+
+  const handleDownloadEventPass = () => {
+    const qrSvg = qrCodeRef.current?.querySelector('svg')?.outerHTML;
+    if (!qrSvg || !pass.eventPassCode || !pass.eventId || !isConfirmedEventPass) {
+      setActionNotice('The event pass is not available until the administrator confirms its security plan.');
+      setTimeout(() => setActionNotice(null), 3000);
+      return;
+    }
+
+    const escapeXml = (value: string) => value.replace(/[<>&'"]/g, (character) => ({
+      '<': '&lt;',
+      '>': '&gt;',
+      '&': '&amp;',
+      "'": '&apos;',
+      '"': '&quot;',
+    })[character] || character);
+    const displayText = (value: string, maxLength = 62) => {
+      const normalized = value.replace(/\s+/g, ' ').trim();
+      return escapeXml(normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized);
+    };
+    const date = new Date(`${pass.expectedDate}T00:00:00`).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const qrMarkup = qrSvg.replace('<svg ', '<svg x="606" y="1000" ');
+    const passSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="900" height="1280" viewBox="0 0 900 1280">
+        <defs>
+          <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#0b4a3c"/><stop offset="1" stop-color="#12382f"/>
+          </linearGradient>
+          <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fffefa"/><stop offset="1" stop-color="#f5f3e9"/>
+          </linearGradient>
+        </defs>
+        <rect width="900" height="1280" rx="30" fill="url(#paper)"/>
+        <rect x="18" y="18" width="864" height="1244" rx="24" fill="none" stroke="#b89a48" stroke-width="2"/>
+        <circle cx="450" cy="82" r="27" fill="#e8eee6"/>
+        <path d="M450 99V68m0 13c-17-4-20-16-21-23 12 2 20 8 21 23m0 3c17-4 20-16 21-23-12 2-20 8-21 23" fill="none" stroke="#0b4a3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="450" y="150" text-anchor="middle" font-family="Georgia,serif" font-size="38" font-weight="700" letter-spacing="5" fill="#0b4a3c">GREENVALLEY</text>
+        <text x="450" y="180" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" letter-spacing="5" fill="#527368">COMMUNITY MANAGEMENT</text>
+        <path d="M225 202H365M535 202H675" stroke="#b89a48" stroke-width="1.5"/>
+        <text x="450" y="232" text-anchor="middle" font-family="Georgia,serif" font-size="27" font-weight="700" fill="#12382f">${displayText(societyName, 42)}</text>
+        <text x="450" y="258" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" letter-spacing="2.5" fill="#527368">${displayText(pass.societyAddress || societyName, 72)}</text>
+
+        <rect x="42" y="292" width="816" height="126" rx="18" fill="url(#green)"/>
+        <path d="M91 355l30-30 30 30-30 30z" fill="none" stroke="#e9dfbd" stroke-width="3"/>
+        <path d="M108 355l9 9 17-19" fill="none" stroke="#e9dfbd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M174 316v78" stroke="#d8c78f" stroke-width="1.5" opacity=".8"/>
+        <text x="205" y="354" font-family="Georgia,serif" font-size="34" font-weight="700" fill="#fffefa">Official Event Pass</text>
+        <text x="207" y="382" font-family="Arial,sans-serif" font-size="13" letter-spacing="3" fill="#d8e4dd">ADMINISTRATOR-CONFIRMED ENTRY</text>
+        <text x="817" y="346" text-anchor="end" font-family="Arial,sans-serif" font-size="12" letter-spacing="2" fill="#d8e4dd">PASS CODE</text>
+        <text x="817" y="380" text-anchor="end" font-family="Arial,sans-serif" font-size="25" font-weight="700" letter-spacing="2" fill="#f0dda0">${escapeXml(pass.eventPassCode)}</text>
+
+        <rect x="68" y="448" width="764" height="456" rx="18" fill="#fffefa" stroke="#d9e1d8" stroke-width="1.5"/>
+        <g font-family="Arial,sans-serif">
+          <g transform="translate(96 486)">
+            <circle cx="17" cy="0" r="16" fill="#e8eee6"/><text x="52" y="-3" font-size="11" letter-spacing="2" fill="#527368">VISITOR</text>
+            <text x="52" y="22" font-family="Georgia,serif" font-size="21" font-weight="700" fill="#12382f">${displayText(pass.visitorName)}</text>
+          </g>
+          <path d="M120 525H780" stroke="#e4e8df"/>
+          <g transform="translate(96 558)">
+            <circle cx="17" cy="0" r="16" fill="#e8eee6"/><text x="52" y="-3" font-size="11" letter-spacing="2" fill="#527368">HOST RESIDENT</text>
+            <text x="52" y="22" font-family="Georgia,serif" font-size="20" font-weight="700" fill="#12382f">${displayText(pass.residentName)} · Flat ${displayText(pass.flatNumber, 14)}</text>
+          </g>
+          <path d="M120 597H780" stroke="#e4e8df"/>
+          <g transform="translate(96 630)">
+            <circle cx="17" cy="0" r="16" fill="#e8eee6"/><text x="52" y="-3" font-size="11" letter-spacing="2" fill="#527368">EVENT</text>
+            <text x="52" y="22" font-family="Georgia,serif" font-size="20" font-weight="700" fill="#12382f">${displayText(pass.eventName || 'Community event')}</text>
+          </g>
+          <path d="M120 669H780" stroke="#e4e8df"/>
+          <g transform="translate(96 702)">
+            <circle cx="17" cy="0" r="16" fill="#e8eee6"/><text x="52" y="-3" font-size="11" letter-spacing="2" fill="#527368">EVENT DATE &amp; TIME</text>
+            <text x="52" y="22" font-family="Georgia,serif" font-size="20" font-weight="700" fill="#12382f">${displayText(`${date} · ${pass.expectedTimeSlot || 'As scheduled'}`)}</text>
+          </g>
+          <path d="M120 741H780" stroke="#e4e8df"/>
+          <g transform="translate(96 774)">
+            <circle cx="17" cy="0" r="16" fill="#e8eee6"/><text x="52" y="-3" font-size="11" letter-spacing="2" fill="#527368">APPROVED ENTRANCE</text>
+            <text x="52" y="22" font-family="Georgia,serif" font-size="20" font-weight="700" fill="#12382f">${displayText(pass.eventEntryGate || '', 52)}</text>
+          </g>
+          <path d="M120 813H780" stroke="#e4e8df"/>
+          <g transform="translate(96 846)">
+            <circle cx="17" cy="0" r="16" fill="#e8eee6"/><text x="52" y="-3" font-size="11" letter-spacing="2" fill="#527368">APPROVED PARKING</text>
+            <text x="52" y="22" font-family="Georgia,serif" font-size="20" font-weight="700" fill="#12382f">${displayText(pass.eventParkingArea || '', 52)}</text>
+          </g>
+        </g>
+
+        <text x="78" y="954" font-family="Arial,sans-serif" font-size="12" letter-spacing="2" fill="#527368">${pass.eventPassCode ? 'BACKUP OTP' : 'GATE VERIFICATION CODE'}</text>
+        <text x="78" y="1002" font-family="Arial,sans-serif" font-size="38" font-weight="700" letter-spacing="5" fill="#12382f">${escapeXml(pass.passcode)}</text>
+        <text x="78" y="1030" font-family="Arial,sans-serif" font-size="12" fill="#527368">Present either code if QR scanning is unavailable.</text>
+        <rect x="578" y="972" width="232" height="232" rx="18" fill="#fffefa" stroke="#d9e1d8" stroke-width="1.5"/>
+        ${qrMarkup}
+        <text x="78" y="1092" font-family="Arial,sans-serif" font-size="12" letter-spacing="2" fill="#527368">ENTRY PROTOCOL</text>
+        <text x="78" y="1118" font-family="Arial,sans-serif" font-size="14" fill="#12382f">${displayText(pass.eventGuestProtocol || 'Present this pass to security at the approved entrance.', 58)}</text>
+        <text x="78" y="1150" font-family="Arial,sans-serif" font-size="12" letter-spacing="2" fill="#527368">PARKING PROTOCOL</text>
+        <text x="78" y="1175" font-family="Arial,sans-serif" font-size="14" fill="#12382f">${displayText(pass.eventParkingPlan || pass.eventParkingArea || '', 58)}</text>
+        <text x="78" y="1210" font-family="Arial,sans-serif" font-size="12" fill="#527368">Please present this pass to security for event entry verification.</text>
+        <path d="M170 1235H340M560 1235H730" stroke="#b89a48" stroke-width="1.5"/>
+        <text x="450" y="1240" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" letter-spacing="2.5" fill="#12382f">GREENVALLEY · ${displayText(societyName, 32)}</text>
+        <text x="450" y="1258" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" letter-spacing="1.5" fill="#71877d">VALID FOR THE EVENT DATE AND TIME SHOWN ABOVE</text>
+      </svg>`;
+
+    const url = URL.createObjectURL(new Blob([passSvg], { type: 'image/svg+xml;charset=utf-8' }));
+    const downloadLink = document.createElement('a');
+    downloadLink.href = url;
+    downloadLink.download = `Greenvalley_Event_Pass_${pass.eventPassCode}.svg`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const getStatusDisplay = () => {
@@ -204,9 +329,9 @@ export const QRVisitorPassCard: React.FC<QRVisitorPassCardProps> = ({
             </div>
             <div>
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 block">
-                Greenwood Heights
+                Greenvalley
               </span>
-              <h3 className="font-extrabold text-sm sm:text-base text-white">Digital Visitor Gate Pass</h3>
+              <h3 className="font-extrabold text-sm sm:text-base text-white">{societyName}</h3>
             </div>
           </div>
 
@@ -237,14 +362,23 @@ export const QRVisitorPassCard: React.FC<QRVisitorPassCardProps> = ({
         {/* QR Code Container */}
         <div className="flex flex-col items-center justify-center p-5 bg-gradient-to-b from-slate-50 to-white border-2 border-slate-200/80 rounded-3xl relative shadow-inner">
           <div className={`p-3.5 bg-white rounded-2xl border ${isExpired ? 'border-amber-300 opacity-60' : 'border-emerald-300 shadow-lg'}`}>
-            <QRCodeSVG
-              value={shareUrl}
-              size={180}
-              level="H"
-              includeMargin={false}
-              fgColor={isExpired ? '#64748b' : '#0f172a'}
-            />
+            <div ref={qrCodeRef}>
+              <QRCodeSVG
+                value={shareUrl}
+                size={180}
+                level="H"
+                includeMargin={false}
+                fgColor={isExpired ? '#64748b' : '#0f172a'}
+              />
+            </div>
           </div>
+
+          {pass.eventId && pass.eventPassCode && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-emerald-800">Event pass reference</span>
+              <span className="mt-1 block font-mono text-xl font-black tracking-[0.2em] text-emerald-950">{pass.eventPassCode}</span>
+            </div>
+          )}
 
           {/* Backup Passcode Strip */}
           <div className="mt-4 text-center space-y-1">
@@ -310,6 +444,16 @@ export const QRVisitorPassCard: React.FC<QRVisitorPassCardProps> = ({
           <div className="space-y-3 pt-2">
             {/* Share Buttons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {isConfirmedEventPass && (
+                <button
+                  type="button"
+                  onClick={handleDownloadEventPass}
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 sm:col-span-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download Official Event Pass</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleCopyLink}

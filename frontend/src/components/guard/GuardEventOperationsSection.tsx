@@ -1,28 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useSociety } from '../../context/SocietyContext';
-import { GuardEventSecurityPlan } from '../../types';
 import {
   AlertTriangle,
   CalendarDays,
   Car,
-  CheckCircle2,
   ClipboardCheck,
   Clock,
   MapPin,
   PartyPopper,
-  Save,
   Shield,
   Users,
 } from 'lucide-react';
-
-type EventPlanDraft = Pick<GuardEventSecurityPlan, 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'>;
-
-const emptyDraft: EventPlanDraft = {
-  guestProtocol: '',
-  parkingPlan: '',
-  guardNotes: '',
-  status: 'planning',
-};
 
 export const GuardEventOperationsSection: React.FC = () => {
   const {
@@ -31,11 +19,8 @@ export const GuardEventOperationsSection: React.FC = () => {
     visitors,
     notices,
     guardEventSecurityPlans,
-    saveGuardEventSecurityPlan,
     currentUser,
   } = useSociety();
-  const [drafts, setDrafts] = useState<Record<string, EventPlanDraft>>({});
-  const [feedback, setFeedback] = useState<{ eventId: string; message: string; success: boolean } | null>(null);
 
   const plansByEventId = useMemo(
     () => new Map(guardEventSecurityPlans.map((plan) => [plan.eventId, plan])),
@@ -48,8 +33,9 @@ export const GuardEventOperationsSection: React.FC = () => {
   const communityEvents = notices
     .filter((notice) => notice.category === 'Event')
     .sort((a, b) => b.date.localeCompare(a.date));
-  const allEvents = upcomingBookings.length + communityEvents.length;
-  const plannedEventCount = guardEventSecurityPlans.filter((plan) => plan.status === 'ready').length;
+  const plannedEventCount = guardEventSecurityPlans.filter(
+    (plan) => plan.status === 'ready' && plan.assignedGuardIds?.length && plan.entryGate && plan.parkingArea
+  ).length;
   const guestPassCount = upcomingBookings.reduce(
     (total, booking) => total + visitors.filter(
       (visitor) =>
@@ -61,44 +47,6 @@ export const GuardEventOperationsSection: React.FC = () => {
     ).length,
     0
   );
-
-  const getDraft = (eventId: string): EventPlanDraft => {
-    const draft = drafts[eventId];
-    if (draft) return draft;
-    const saved = plansByEventId.get(eventId);
-    if (!saved) return emptyDraft;
-    return {
-      guestProtocol: saved.guestProtocol,
-      parkingPlan: saved.parkingPlan,
-      guardNotes: saved.guardNotes,
-      status: saved.status,
-    };
-  };
-
-  const updateDraft = (eventId: string, changes: Partial<EventPlanDraft>) => {
-    setDrafts((previous) => {
-      const existingDraft = previous[eventId];
-      const saved = plansByEventId.get(eventId);
-      const currentDraft = existingDraft || (saved
-        ? {
-            guestProtocol: saved.guestProtocol,
-            parkingPlan: saved.parkingPlan,
-            guardNotes: saved.guardNotes,
-            status: saved.status,
-          }
-        : emptyDraft);
-      return {
-        ...previous,
-        [eventId]: { ...currentDraft, ...changes },
-      };
-    });
-    setFeedback(null);
-  };
-
-  const savePlan = (eventId: string) => {
-    const result = saveGuardEventSecurityPlan({ eventId, ...getDraft(eventId) });
-    setFeedback({ eventId, message: result.message, success: result.success });
-  };
 
   return (
     <section aria-labelledby="guard-events-title" className="w-full space-y-6">
@@ -113,13 +61,13 @@ export const GuardEventOperationsSection: React.FC = () => {
               Community Events & Guard Protocols
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Review confirmed amenity bookings and society event announcements. Guards can set guest-entry and vehicle-parking procedures for each event.
+              Review administrator-confirmed event schedules, assigned guards, entrances, and parking instructions. Event plans are read-only for guards.
             </p>
           </div>
         </div>
         <span className="inline-flex w-fit items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
           <Shield className="h-3.5 w-3.5" />
-          Security planning by {currentUser?.name || 'guard team'}
+          Read-only event brief · {currentUser?.name || 'guard team'}
         </span>
       </header>
 
@@ -146,7 +94,7 @@ export const GuardEventOperationsSection: React.FC = () => {
           <div>
             <h3 className="text-sm font-extrabold text-sky-950">Event-day guard checklist</h3>
             <div className="mt-3 grid gap-3 text-sm leading-6 text-sky-900 md:grid-cols-2 xl:grid-cols-4">
-              <p><span className="font-bold">Before:</span> Confirm the event time, gate, host flat, and the saved security plan.</p>
+              <p><span className="font-bold">Before:</span> Follow the event schedule and entrance confirmed by the administrator.</p>
               <p><span className="font-bold">Guests:</span> Verify each visitor against the resident pass and record entry using gate operations.</p>
               <p><span className="font-bold">Vehicles:</span> Follow the event parking arrangement and keep emergency/fire access clear.</p>
               <p><span className="font-bold">Handover:</span> Share unresolved guest or parking issues with the next gate guard.</p>
@@ -183,7 +131,6 @@ export const GuardEventOperationsSection: React.FC = () => {
                   visitor.status !== 'denied' &&
                   visitor.status !== 'checked_out'
               );
-              const draft = getDraft(eventId);
               const savedPlan = plansByEventId.get(eventId);
               const availableVehicles = guestPasses.filter((pass) => pass.vehicleNumber);
 
@@ -201,10 +148,13 @@ export const GuardEventOperationsSection: React.FC = () => {
                       </div>
                     </div>
                     <span className={`w-fit rounded-full px-3 py-1.5 text-xs font-bold ${
-                      savedPlan?.status === 'ready' ? 'bg-emerald-50 text-emerald-800' :
-                      savedPlan?.status === 'completed' ? 'bg-slate-200 text-slate-700' : 'bg-amber-50 text-amber-800'
+                      savedPlan?.status === 'ready' && savedPlan.entryGate && savedPlan.parkingArea && savedPlan.assignedGuardIds?.length
+                        ? 'bg-emerald-50 text-emerald-800'
+                        : 'bg-amber-50 text-amber-800'
                     }`}>
-                      {savedPlan?.status === 'ready' ? 'Plan ready' : savedPlan?.status === 'completed' ? 'Completed' : 'Planning needed'}
+                      {savedPlan?.status === 'ready' && savedPlan.entryGate && savedPlan.parkingArea && savedPlan.assignedGuardIds?.length
+                        ? 'Admin confirmed'
+                        : 'Awaiting admin confirmation'}
                     </span>
                   </div>
 
@@ -255,81 +205,45 @@ export const GuardEventOperationsSection: React.FC = () => {
                   </div>
 
                   <div className="border-t border-slate-100 p-5 sm:p-6">
-                    <h5 className="text-sm font-extrabold text-slate-950">Guard-managed event security plan</h5>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">Set entry checks, guest handling, and parking instructions for this booking.</p>
-                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-700" htmlFor={`${eventId}-guest-protocol`}>Guest-entry protocol</label>
-                        <textarea
-                          id={`${eventId}-guest-protocol`}
-                          rows={3}
-                          maxLength={800}
-                          required
-                          value={draft.guestProtocol}
-                          onChange={(event) => updateDraft(eventId, { guestProtocol: event.target.value })}
-                          placeholder="Example: Verify each guest pass, confirm host flat, and direct visitors to the clubhouse."
-                          className="w-full resize-y rounded-xl border border-slate-300 px-3.5 py-3 text-sm leading-5 text-slate-900 outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-100"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-700" htmlFor={`${eventId}-parking-plan`}>Vehicle & parking plan</label>
-                        <textarea
-                          id={`${eventId}-parking-plan`}
-                          rows={3}
-                          maxLength={800}
-                          required
-                          value={draft.parkingPlan}
-                          onChange={(event) => updateDraft(eventId, { parkingPlan: event.target.value })}
-                          placeholder="Example: Direct approved guest vehicles to the marked visitor bays; keep fire lanes clear."
-                          className="w-full resize-y rounded-xl border border-slate-300 px-3.5 py-3 text-sm leading-5 text-slate-900 outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-100"
-                        />
-                      </div>
-                      <div className="space-y-2 lg:col-span-2">
-                        <label className="text-xs font-bold text-slate-700" htmlFor={`${eventId}-guard-notes`}>Guard coordination notes <span className="font-normal text-slate-400">(optional)</span></label>
-                        <textarea
-                          id={`${eventId}-guard-notes`}
-                          rows={2}
-                          maxLength={500}
-                          value={draft.guardNotes}
-                          onChange={(event) => updateDraft(eventId, { guardNotes: event.target.value })}
-                          placeholder="Record gate handover details or the guard position needed during the event."
-                          className="w-full resize-y rounded-xl border border-slate-300 px-3.5 py-3 text-sm leading-5 text-slate-900 outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-100"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between lg:col-span-2">
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-slate-700" htmlFor={`${eventId}-plan-status`}>Plan status</label>
-                          <select
-                            id={`${eventId}-plan-status`}
-                            value={draft.status}
-                            onChange={(event) => updateDraft(eventId, { status: event.target.value as EventPlanDraft['status'] })}
-                            className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-100 sm:w-56"
-                          >
-                            <option value="planning">Planning needed</option>
-                            <option value="ready">Ready for event</option>
-                            <option value="completed">Event completed</option>
-                          </select>
+                    <h5 className="text-sm font-extrabold text-slate-950">Admin-confirmed event instructions</h5>
+                    {savedPlan?.status === 'ready' && savedPlan.entryGate && savedPlan.parkingArea && savedPlan.assignedGuardIds?.length ? (
+                      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-slate-200 p-3.5">
+                          <dt className="text-xs font-bold text-slate-500">Approved entrance</dt>
+                          <dd className="mt-1 text-sm font-bold text-slate-900">{savedPlan.entryGate}</dd>
                         </div>
-                        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                          {feedback?.eventId === eventId && (
-                            <p className={`text-xs font-semibold ${feedback.success ? 'text-emerald-700' : 'text-rose-700'}`} role={feedback.success ? 'status' : 'alert'}>
-                              {feedback.message}
-                            </p>
-                          )}
-                          {savedPlan && (
-                            <p className="text-xs text-slate-400">Last updated by {savedPlan.updatedBy} · {new Date(savedPlan.updatedAt).toLocaleString()}</p>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => savePlan(eventId)}
-                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-200"
-                          >
-                            <Save className="h-4 w-4" />
-                            Save event plan
-                          </button>
+                        <div className="rounded-xl border border-slate-200 p-3.5">
+                          <dt className="text-xs font-bold text-slate-500">Approved parking area</dt>
+                          <dd className="mt-1 text-sm font-bold text-slate-900">{savedPlan.parkingArea}</dd>
                         </div>
-                      </div>
-                    </div>
+                        <div className="rounded-xl border border-slate-200 p-3.5">
+                          <dt className="text-xs font-bold text-slate-500">Assigned guards</dt>
+                          <dd className="mt-1 text-sm font-bold text-slate-900">{savedPlan.assignedGuardNames?.join(', ') || `${savedPlan.assignedGuardCount || 0} guards`}</dd>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 p-3.5">
+                          <dt className="text-xs font-bold text-slate-500">Confirmed by</dt>
+                          <dd className="mt-1 text-sm font-bold text-slate-900">{savedPlan.updatedBy} · {new Date(savedPlan.updatedAt).toLocaleString()}</dd>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 p-3.5 sm:col-span-2">
+                          <dt className="text-xs font-bold text-slate-500">Guest-entry protocol</dt>
+                          <dd className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700">{savedPlan.guestProtocol}</dd>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 p-3.5 sm:col-span-2">
+                          <dt className="text-xs font-bold text-slate-500">Parking protocol</dt>
+                          <dd className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700">{savedPlan.parkingPlan}</dd>
+                        </div>
+                        {savedPlan.guardNotes && (
+                          <div className="rounded-xl border border-slate-200 p-3.5 sm:col-span-2">
+                            <dt className="text-xs font-bold text-slate-500">Additional instructions</dt>
+                            <dd className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700">{savedPlan.guardNotes}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    ) : (
+                      <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                        This event is not yet confirmed by the administrator. Wait for the final entrance, parking, and guard assignment details before directing guests.
+                      </p>
+                    )}
                   </div>
                 </article>
               );
@@ -352,88 +266,56 @@ export const GuardEventOperationsSection: React.FC = () => {
           <div className="grid gap-4 xl:grid-cols-2">
             {communityEvents.map((notice) => {
               const eventId = `notice:${notice.id}`;
-              const draft = getDraft(eventId);
               const savedPlan = plansByEventId.get(eventId);
               return (
                 <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" key={eventId}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">Society event</span>
-                    <span className="text-xs text-slate-500">Notice published {notice.date}</span>
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${savedPlan?.status === 'ready' && savedPlan.entryGate && savedPlan.parkingArea && savedPlan.assignedGuardIds?.length ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
+                      {savedPlan?.status === 'ready' && savedPlan.entryGate && savedPlan.parkingArea && savedPlan.assignedGuardIds?.length ? 'Admin confirmed' : 'Awaiting admin confirmation'}
+                    </span>
                   </div>
                   <h4 className="mt-3 text-lg font-extrabold text-slate-950">{notice.title}</h4>
                   <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{notice.content}</p>
-                  <p className="mt-3 text-xs text-slate-500">Organizer / publisher: {notice.author}</p>
-                  <div className="mt-5 grid gap-4 border-t border-slate-100 pt-5 lg:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-700" htmlFor={`${eventId}-guest-protocol`}>Guest-entry protocol</label>
-                      <textarea
-                        id={`${eventId}-guest-protocol`}
-                        rows={3}
-                        maxLength={800}
-                        required
-                        value={draft.guestProtocol}
-                        onChange={(event) => updateDraft(eventId, { guestProtocol: event.target.value })}
-                        placeholder="Set guest verification and entry instructions for the event."
-                        className="w-full resize-y rounded-xl border border-slate-300 px-3.5 py-3 text-sm leading-5 text-slate-900 outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-100"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-700" htmlFor={`${eventId}-parking-plan`}>Vehicle & parking plan</label>
-                      <textarea
-                        id={`${eventId}-parking-plan`}
-                        rows={3}
-                        maxLength={800}
-                        required
-                        value={draft.parkingPlan}
-                        onChange={(event) => updateDraft(eventId, { parkingPlan: event.target.value })}
-                        placeholder="Set where approved event vehicles should park and access routes to keep clear."
-                        className="w-full resize-y rounded-xl border border-slate-300 px-3.5 py-3 text-sm leading-5 text-slate-900 outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-100"
-                      />
-                    </div>
-                    <div className="space-y-2 lg:col-span-2">
-                      <label className="text-xs font-bold text-slate-700" htmlFor={`${eventId}-guard-notes`}>Guard coordination notes <span className="font-normal text-slate-400">(optional)</span></label>
-                      <textarea
-                        id={`${eventId}-guard-notes`}
-                        rows={2}
-                        maxLength={500}
-                        value={draft.guardNotes}
-                        onChange={(event) => updateDraft(eventId, { guardNotes: event.target.value })}
-                        placeholder="Add deployment or handover notes."
-                        className="w-full resize-y rounded-xl border border-slate-300 px-3.5 py-3 text-sm leading-5 text-slate-900 outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-100"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between lg:col-span-2">
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-700" htmlFor={`${eventId}-plan-status`}>Plan status</label>
-                        <select
-                          id={`${eventId}-plan-status`}
-                          value={draft.status}
-                          onChange={(event) => updateDraft(eventId, { status: event.target.value as EventPlanDraft['status'] })}
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-4 focus:ring-slate-100 sm:w-56"
-                        >
-                          <option value="planning">Planning needed</option>
-                          <option value="ready">Ready for event</option>
-                          <option value="completed">Event completed</option>
-                        </select>
+                  <p className="mt-3 text-xs text-slate-500">Organizer / publisher: {notice.author} · Notice published {notice.date}</p>
+                  {savedPlan?.status === 'ready' && savedPlan.entryGate && savedPlan.parkingArea && savedPlan.assignedGuardIds?.length ? (
+                    <dl className="mt-5 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <dt className="text-xs font-bold text-slate-700">Approved entrance</dt>
+                        <dd className="mt-2 text-sm font-semibold text-slate-900">{savedPlan.entryGate}</dd>
                       </div>
-                      <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                        {feedback?.eventId === eventId && (
-                          <p className={`text-xs font-semibold ${feedback.success ? 'text-emerald-700' : 'text-rose-700'}`} role={feedback.success ? 'status' : 'alert'}>
-                            {feedback.message}
-                          </p>
-                        )}
-                        {savedPlan && <p className="text-xs text-slate-400">Updated by {savedPlan.updatedBy}</p>}
-                        <button
-                          type="button"
-                          onClick={() => savePlan(eventId)}
-                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-200"
-                        >
-                          <Save className="h-4 w-4" />
-                          Save event plan
-                        </button>
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <dt className="text-xs font-bold text-slate-700">Approved parking area</dt>
+                        <dd className="mt-2 text-sm font-semibold text-slate-900">{savedPlan.parkingArea}</dd>
                       </div>
-                    </div>
-                  </div>
+                      <div className="rounded-xl bg-violet-50 p-4">
+                        <dt className="flex items-center gap-2 text-xs font-bold text-violet-900"><Users className="h-4 w-4" /> Guards assigned</dt>
+                        <dd className="mt-2 text-sm font-extrabold text-violet-950">{savedPlan.assignedGuardNames?.join(', ') || `${savedPlan.assignedGuardCount || 0} guards`}</dd>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 p-4">
+                        <dt className="flex items-center gap-2 text-xs font-bold text-slate-700"><ClipboardCheck className="h-4 w-4" /> Plan updated</dt>
+                        <dd className="mt-2 text-sm font-semibold text-slate-900">{savedPlan.updatedBy} · {new Date(savedPlan.updatedAt).toLocaleString()}</dd>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <dt className="text-xs font-bold text-slate-700">Guest-entry protocol</dt>
+                        <dd className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{savedPlan.guestProtocol}</dd>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <dt className="flex items-center gap-2 text-xs font-bold text-slate-700"><Car className="h-4 w-4" /> Parking protocol</dt>
+                        <dd className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{savedPlan.parkingPlan}</dd>
+                      </div>
+                      {savedPlan.guardNotes && (
+                        <div className="rounded-xl border border-slate-200 p-4 sm:col-span-2">
+                          <dt className="text-xs font-bold text-slate-700">Additional guard instructions</dt>
+                          <dd className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{savedPlan.guardNotes}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  ) : (
+                    <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-900">
+                      The administrator has not confirmed the guard assignment, entrance, and parking details yet. Wait for final confirmation before directing guests.
+                    </p>
+                  )}
                 </article>
               );
             })}

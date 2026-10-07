@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSociety } from '../context/SocietyContext';
 import {
   AlertTriangle,
@@ -12,6 +12,7 @@ import {
   Shield,
   Phone,
   CheckCircle2,
+  LockKeyhole,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -22,15 +23,47 @@ export const Header: React.FC = () => {
     triggerSOS,
     resetToDefaultData,
     currentUser,
+    flats,
     logout,
+    societies,
+    currentSocietyName,
+    setCurrentSocietyName,
   } = useSociety();
 
-  const [societyName, setSocietyName] = useState('The North Tower');
   const [financialYear, setFinancialYear] = useState('2025-2026');
   const [showFAQ, setShowFAQ] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [societySwitchNotice, setSocietySwitchNotice] = useState<{ attempted: string; home: string } | null>(null);
 
   const activeSOS = sosAlerts.filter((s) => s.status === 'active');
+  const residentFlat = currentUser?.flatNumber
+    ? flats.find((flat) =>
+        flat.flatNumber.toLowerCase() === currentUser.flatNumber?.toLowerCase() &&
+        (currentUser.email ? flat.email.toLowerCase() === currentUser.email.toLowerCase() : flat.ownerName === currentUser.name)
+      ) || flats.find((flat) => flat.flatNumber.toLowerCase() === currentUser.flatNumber?.toLowerCase())
+    : undefined;
+  const residentSocietyName = residentFlat?.societyName || currentUser?.societyName;
+
+  useEffect(() => {
+    if (!societySwitchNotice) return undefined;
+    const timer = window.setTimeout(() => setSocietySwitchNotice(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [societySwitchNotice]);
+
+  useEffect(() => {
+    if (role === 'resident' && residentSocietyName && currentSocietyName !== residentSocietyName) {
+      setCurrentSocietyName(residentSocietyName);
+    }
+  }, [role, residentSocietyName, currentSocietyName, setCurrentSocietyName]);
+
+  const handleSocietySelection = (selectedSociety: string) => {
+    if (role === 'resident' && residentSocietyName && selectedSociety !== residentSocietyName) {
+      setCurrentSocietyName(residentSocietyName);
+      setSocietySwitchNotice({ attempted: selectedSociety, home: residentSocietyName });
+      return;
+    }
+    setCurrentSocietyName(selectedSociety);
+  };
 
   const handleSignOut = () => {
     logout();
@@ -45,7 +78,7 @@ export const Header: React.FC = () => {
           <div className="flex items-center gap-3">
             <div className="min-w-0">
               <h1 className="truncate text-base font-bold tracking-tight text-slate-900 sm:text-lg">
-                {societyName}
+                {currentSocietyName}
               </h1>
               <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                 MyGate ERP Society Suite
@@ -54,14 +87,14 @@ export const Header: React.FC = () => {
             <label className="relative flex w-[200px] flex-col rounded-lg border border-slate-300 bg-white px-2.5 py-1 leading-tight focus-within:border-slate-500">
               <span className="text-[10px] font-medium text-slate-500">Select Society</span>
               <select
-                value={societyName}
-                onChange={(e) => setSocietyName(e.target.value)}
+                value={currentSocietyName}
+                onChange={(e) => handleSocietySelection(e.target.value)}
                 aria-label="Select Society"
                 className="w-full appearance-none bg-transparent pr-6 text-sm font-semibold text-slate-800 outline-none cursor-pointer"
               >
-                <option value="The North Tower">The North Tower</option>
-                <option value="Vedanta Niwas">Vedanta Niwas</option>
-                <option value="Emerald Palms Heights">Emerald Palms Heights</option>
+                {societies.map((society) => (
+                  <option key={society.id} value={society.name}>{society.name}</option>
+                ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             </label>
@@ -159,6 +192,37 @@ export const Header: React.FC = () => {
           </div>
         </div>
       </header>
+
+      {societySwitchNotice && (
+        <div
+          role="alert"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start gap-3 border-b border-amber-100 bg-amber-50 p-5">
+              <span className="rounded-xl bg-white p-2.5 text-amber-700 shadow-sm">
+                <LockKeyhole className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900">Society access restricted</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  This resident account is registered with <strong>{societySwitchNotice.home}</strong>, not <strong>{societySwitchNotice.attempted}</strong>.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 p-5">
+              <p className="text-sm font-semibold text-slate-800">You’re still signed in. Returning you to your society.</p>
+              <button
+                type="button"
+                onClick={() => setSocietySwitchNotice(null)}
+                className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800"
+              >
+                Continue to {societySwitchNotice.home}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ================= FAQ MODAL ================= */}
       {showFAQ && (
