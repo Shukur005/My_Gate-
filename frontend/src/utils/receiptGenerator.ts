@@ -1,4 +1,4 @@
-import { MaintenanceBill } from '../types';
+import { MaintenanceBill, SocietyExpense } from '../types';
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (character) => {
@@ -152,4 +152,72 @@ export function downloadBillReceipt(bill: MaintenanceBill, txnOverride?: string)
     win.document.write(htmlContent);
     win.document.close();
   }
+}
+
+export function downloadExpenseVoucher(expense: SocietyExpense) {
+  const voucherNumber = expense.receiptNumber || expense.id;
+  const rows: [string, string][] = [
+    ['Voucher Number', voucherNumber],
+    ['Expense', expense.title],
+    ['Category', expense.category],
+    ['Paid To', expense.paidTo],
+    ['Date', expense.date],
+    ['Payment Mode', expense.paymentMode],
+    ['Approved By', expense.approvedBy],
+    ...(expense.notes ? [['Notes', expense.notes] as [string, string]] : []),
+  ];
+  const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Expense Voucher - ${escapeHtml(voucherNumber)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 36px 16px; background: #f4f6f8; color: #172033; font-family: Arial, Helvetica, sans-serif; }
+    .page { max-width: 760px; margin: 0 auto; }
+    .action-bar { margin-bottom: 16px; text-align: right; }
+    button { padding: 10px 18px; border: 0; border-radius: 6px; background: #111827; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+    article { overflow: hidden; border: 1px solid #dfe4ea; background: #fff; box-shadow: 0 8px 28px rgba(15, 23, 42, .08); }
+    header { padding: 28px 34px 22px; text-align: center; }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 7px 0 0; color: #596579; font-size: 12px; }
+    .divider { height: 3px; margin: 0 28px; background: #d7dee7; }
+    .content { padding: 24px 34px 30px; }
+    h2 { margin: 0 0 18px; text-align: center; font-size: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 12px; border: 1px solid #d5dbe3; text-align: left; }
+    th { width: 36%; background: #f1f4f7; }
+    .amount { margin-top: 18px; padding: 15px; background: #172033; color: #fff; text-align: right; font-size: 18px; font-weight: 800; }
+    footer { margin-top: 24px; padding-top: 16px; border-top: 1px dashed #cbd3dd; color: #647084; text-align: center; font-size: 11px; }
+    @media print { body { padding: 0; background: #fff; } .action-bar { display: none; } article { border: 0; box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="action-bar"><button onclick="window.print()">Save as PDF / Print</button></div>
+    <article>
+      <header><h1>Society Expense Voucher</h1><p>Expense record and payment details</p></header>
+      <div class="divider"></div>
+      <section class="content">
+        <h2>${escapeHtml(expense.title)}</h2>
+        <table><tbody>${rows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('')}</tbody></table>
+        <div class="amount">Amount Paid: ${formatAmount(expense.amount)}</div>
+        <footer>This is a computer-generated expense voucher.</footer>
+      </section>
+    </article>
+  </main>
+</body>
+</html>`;
+
+  const blob = new Blob([htmlContent], { type: 'text/html' });
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = `Expense_Voucher_${voucherNumber.replace(/[^a-z0-9-_]/gi, '_')}.html`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.open(blobUrl, '_blank');
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
 }

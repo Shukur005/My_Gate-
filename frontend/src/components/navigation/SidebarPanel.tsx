@@ -11,7 +11,6 @@ import {
   LifeBuoy,
   UserCheck,
   Calendar,
-  Handshake,
   Package,
   TrendingUp,
   Settings,
@@ -50,6 +49,7 @@ export const SidebarPanel: React.FC = () => {
     notices,
     staff,
     activeFlat,
+    currentSocietyName,
     updateVisitorStatus,
     deleteVisitorPass,
   } = useSociety();
@@ -93,7 +93,9 @@ export const SidebarPanel: React.FC = () => {
   const [showParcelsModal, setShowParcelsModal] = useState(false);
 
   // Deliveries list
-  const recentDeliveries = visitors.filter((v) => v.category === 'delivery');
+  const recentDeliveries = visitors.filter((v) =>
+    v.category === 'delivery' && v.societyName === currentSocietyName
+  );
 
   const handleDeleteDelivery = (deliveryId: string, deliveryName: string) => {
     if (!window.confirm(`Delete the delivery record for "${deliveryName}"? This cannot be undone.`)) return;
@@ -141,25 +143,28 @@ export const SidebarPanel: React.FC = () => {
   const filteredFlats = searchQuery.trim()
     ? flats.filter(
         (f) =>
-          f.flatNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          f.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          f.phone.includes(searchQuery)
+          f.societyName === currentSocietyName &&
+          (f.flatNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            f.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            f.phone.includes(searchQuery))
       )
     : [];
 
   const filteredBills = searchQuery.trim()
     ? bills.filter(
         (b) =>
-          b.flatNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          b.monthYear.toLowerCase().includes(searchQuery.toLowerCase())
+          b.societyName === currentSocietyName &&
+          (b.flatNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            b.monthYear.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : [];
 
   const filteredNotices = searchQuery.trim()
     ? notices.filter(
         (n) =>
-          n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          n.category.toLowerCase().includes(searchQuery.toLowerCase())
+          n.societyName === currentSocietyName &&
+          (n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            n.category.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : [];
 
@@ -214,9 +219,9 @@ export const SidebarPanel: React.FC = () => {
     },
     {
       id: 'staff',
-      label: 'Vendors',
-      category: 'Services',
-      icon: (active) => <Handshake className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
+      label: role === 'resident' ? 'Household Staff' : 'Vendors',
+      category: role === 'resident' ? 'My Home' : 'Services',
+      icon: (active) => <UserCheck className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
     {
       id: 'deliveries',
@@ -314,7 +319,7 @@ export const SidebarPanel: React.FC = () => {
 
         <nav className={`flex-1 min-h-0 w-full space-y-1.5 overflow-y-auto overflow-x-hidden scrollbar-none py-1 ${isExpanded ? 'px-2' : ''}`}>
           {navItems.filter((item) =>
-            (role !== 'resident' || (item.id !== 'staff' && item.id !== 'reports')) &&
+            (role !== 'resident' || item.id !== 'reports') &&
             (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports')) &&
             item.label.toLowerCase().includes(menuFilter.trim().toLowerCase())
           ).map((item) => {
@@ -354,7 +359,7 @@ export const SidebarPanel: React.FC = () => {
           })}
           {isExpanded && menuFilter.trim() && !navItems.some((item) =>
             item.label.toLowerCase().includes(menuFilter.trim().toLowerCase()) &&
-            (role !== 'resident' || (item.id !== 'staff' && item.id !== 'reports')) &&
+            (role !== 'resident' || item.id !== 'reports') &&
             (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports'))
           ) && <p className="px-3 py-2 text-sm text-slate-500">No menu items found.</p>}
         </nav>

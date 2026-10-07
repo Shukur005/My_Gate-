@@ -8,6 +8,7 @@ import { QRPassDetailsModal } from './QRPassDetailsModal';
 import { PanicAlertModal } from './PanicAlertModal';
 import { VisitorHistoryLog } from './VisitorHistoryLog';
 import { AmenityBookingSection } from './AmenityBookingSection';
+import { DomesticWorkerPassSection } from './DomesticWorkerPassSection';
 import { downloadBillReceipt } from '../../utils/receiptGenerator';
 import {
   Key,
@@ -49,6 +50,7 @@ import {
 export const ResidentView: React.FC = () => {
   const {
     activeFlat,
+    currentUser,
     flats,
     visitors,
     bills,
@@ -67,7 +69,7 @@ export const ResidentView: React.FC = () => {
     activeSidebarNav,
   } = useSociety();
 
-  const [activeTab, setActiveTab] = useState<'passes' | 'history' | 'bills' | 'amenities' | 'helpdesk' | 'notices' | 'community'>('passes');
+  const [activeTab, setActiveTab] = useState<'passes' | 'history' | 'bills' | 'amenities' | 'helpdesk' | 'notices' | 'community' | 'staff'>('passes');
 
   // Synchronize with left sidebar selection
   useEffect(() => {
@@ -83,6 +85,8 @@ export const ResidentView: React.FC = () => {
       setActiveTab('community');
     } else if (activeSidebarNav === 'deliveries') {
       setActiveTab('history');
+    } else if (activeSidebarNav === 'staff') {
+      setActiveTab('staff');
     } else if (activeSidebarNav === 'dashboard') {
       setActiveTab('passes');
     } else if (activeSidebarNav === 'settings') {
@@ -114,7 +118,9 @@ export const ResidentView: React.FC = () => {
   const [bookingMessage, setBookingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Current Flat details
-  const flatObj = flats.find((f) => f.flatNumber === activeFlat) || flats[0];
+  const flatObj = (currentUser?.societyName
+    ? flats.find((flat) => flat.flatNumber === activeFlat && flat.societyName === currentUser.societyName)
+    : undefined) || flats.find((flat) => flat.flatNumber === activeFlat) || flats[0];
 
   // Filtered records for active flat
   const myVisitors = visitors.filter((v) => v.flatNumber === activeFlat);
@@ -294,6 +300,21 @@ export const ResidentView: React.FC = () => {
         </button>
 
         <button
+          onClick={() => {
+            setActiveTab('staff');
+            setActiveSidebarNav('staff');
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+            activeTab === 'staff'
+              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          <span>Household Staff</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('bills')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap relative ${
             activeTab === 'bills'
@@ -347,6 +368,8 @@ export const ResidentView: React.FC = () => {
           <span>Notice Board & Staff</span>
         </button>
       </div>
+
+      {activeTab === 'staff' && <DomesticWorkerPassSection />}
 
       {activeTab === 'community' && (
         <section aria-labelledby="resident-family-details-title" className="space-y-6">

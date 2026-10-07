@@ -30,7 +30,7 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
   defaultCategory = 'guest',
   onOpenPublicView,
 }) => {
-  const { preApproveVisitor, activeFlat } = useSociety();
+  const { preApproveVisitor, activeFlat, notices, guardEventSecurityPlans } = useSociety();
 
   const [visitorName, setVisitorName] = useState('');
   const [phone, setPhone] = useState('');
@@ -41,6 +41,8 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
   const [expectedTimeSlot, setExpectedTimeSlot] = useState('18:00 - 22:00');
   const [validDurationHours, setValidDurationHours] = useState<number>(6);
   const [purpose, setPurpose] = useState('');
+  const [eventId, setEventId] = useState('');
+  const [formError, setFormError] = useState('');
   const [createdPass, setCreatedPass] = useState<VisitorPass | null>(null);
 
   if (!isOpen) return null;
@@ -49,7 +51,7 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
     e.preventDefault();
     if (!visitorName.trim()) return;
 
-    const pass = preApproveVisitor({
+    const result = preApproveVisitor({
       visitorName: visitorName.trim(),
       phone: phone.trim() || '+91 98765 43210',
       category,
@@ -59,9 +61,15 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
       validDurationHours,
       purpose: purpose.trim() || undefined,
       vehicleNumber: vehicleNumber.trim() ? vehicleNumber.trim().toUpperCase() : undefined,
+      eventId: eventId || undefined,
     });
 
-    setCreatedPass(pass);
+    if (!result.success || !result.pass) {
+      setFormError(result.message);
+      return;
+    }
+    setFormError('');
+    setCreatedPass(result.pass);
   };
 
   const handleDone = () => {
@@ -71,8 +79,14 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
     setCompanyOrRole('');
     setVehicleNumber('');
     setPurpose('');
+    setEventId('');
+    setFormError('');
     onClose();
   };
+
+  const createdEventPlan = createdPass?.eventId
+    ? guardEventSecurityPlans.find((plan) => plan.eventId === createdPass.eventId)
+    : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/55 backdrop-blur-xs overflow-y-auto">
@@ -110,6 +124,12 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
                 <span>QR Visitor Pass Ready to Share!</span>
               </div>
             </div>
+            {createdPass.eventName && createdEventPlan && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+                <p className="font-extrabold">Event security update: {createdPass.eventName}</p>
+                <p className="mt-1">{createdEventPlan.assignedGuardNames?.join(', ')} assigned · Enter via {createdEventPlan.entryGate} · Park at {createdEventPlan.parkingArea}. Your pass is ready under the administrator-confirmed protocols.</p>
+              </div>
+            )}
 
             {/* Reusable QR Card */}
             <QRVisitorPassCard
@@ -138,7 +158,10 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
                   <button
                     key={cat}
                     type="button"
-                    onClick={() => setCategory(cat)}
+                    onClick={() => {
+                      setCategory(cat);
+                      if (cat !== 'guest') setEventId('');
+                    }}
                     className={`py-2 px-2.5 rounded-xl text-xs font-bold capitalize border text-center transition-all ${
                       category === cat
                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
@@ -242,6 +265,54 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
             </div>
 
             {/* Expected Date & Time Slot */}
+            {category === 'guest' && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <label htmlFor="visitor-event" className="text-xs font-bold text-slate-700 block mb-1.5">Society event (optional)</label>
+                <select
+                  id="visitor-event"
+                  value={eventId}
+                  onChange={(event) => {
+                    setEventId(event.target.value);
+                    setFormError('');
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900"
+                >
+                  <option value="">Regular visitor — not attending a society event</option>
+                  {notices.filter((notice) => notice.category === 'Event').map((notice) => {
+                    const id = `notice:${notice.id}`;
+                    const plan = guardEventSecurityPlans.find((item) => item.eventId === id);
+                    const ready = plan?.status === 'ready' && Boolean(plan.assignedGuardIds?.length && plan.entryGate && plan.parkingArea);
+                    return (
+                      <option key={id} value={id} disabled={!ready}>
+                        {notice.title} · {ready ? 'Admin confirmed' : 'Awaiting admin confirmation'}
+                      </option>
+                    );
+                  })}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Event options stay unavailable until management assigns guards and publishes the event security plan.</p>
+                {eventId && (() => {
+                  const eventNotice = notices.find((notice) => `notice:${notice.id}` === eventId);
+                  const plan = guardEventSecurityPlans.find((item) => item.eventId === eventId);
+                  if (!eventNotice || !plan || plan.status !== 'ready' || !plan.assignedGuardIds?.length || !plan.entryGate || !plan.parkingArea) {
+                    return <p className="mt-2 text-xs font-semibold text-amber-800">Passes are unavailable until the administrator confirms the assigned guards, entrance, and parking area.</p>;
+                  }
+                  return (
+                    <div className="mt-2 space-y-1 text-xs text-emerald-900">
+                      <p className="font-bold">Final details confirmed by {plan.updatedBy}</p>
+                      <p><span className="font-semibold">Assigned guards:</span> {plan.assignedGuardNames?.join(', ')}</p>
+                      <p><span className="font-semibold">Entrance:</span> {plan.entryGate}</p>
+                      <p><span className="font-semibold">Parking area:</span> {plan.parkingArea}</p>
+                      <p><span className="font-semibold">Guest entry:</span> {plan.guestProtocol}</p>
+                      <p><span className="font-semibold">Parking:</span> {plan.parkingPlan}</p>
+                      {plan.guardNotes && <p><span className="font-semibold">Guard notes:</span> {plan.guardNotes}</p>}
+                      <p className="text-emerald-700">Updated by {plan.updatedBy} · {new Date(plan.updatedAt).toLocaleString()}</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Expected Date & Time Slot */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Expected Date</label>
@@ -282,6 +353,7 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
             </div>
 
             {/* Footer Buttons */}
+            {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">{formError}</p>}
             <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
               <button
                 type="button"
@@ -293,6 +365,7 @@ export const PreApproveModal: React.FC<PreApproveModalProps> = ({
 
               <button
                 type="submit"
+                disabled={Boolean(eventId && !guardEventSecurityPlans.some((plan) => plan.eventId === eventId && plan.status === 'ready' && plan.assignedGuardIds?.length && plan.entryGate && plan.parkingArea))}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-6 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all active:scale-95"
               >
                 <QrCode className="w-4 h-4" />

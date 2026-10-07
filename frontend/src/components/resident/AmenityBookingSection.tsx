@@ -26,10 +26,15 @@ import {
   CreditCard,
 } from 'lucide-react';
 
-export const AmenityBookingSection: React.FC = () => {
-  const { amenities, bookings, bookAmenity, cancelBooking, activeFlat, flats } = useSociety();
+const residencyBackground = new URL('../../assets/images/residency_buildings_bg_1791182297492.jpg', import.meta.url).href;
 
-  const currentFlatObj = flats.find((f) => f.flatNumber === activeFlat) || flats[0];
+export const AmenityBookingSection: React.FC = () => {
+  const { amenities, bookings, bookAmenity, cancelBooking, activeFlat, flats, guardEventSecurityPlans, currentSocietyName } = useSociety();
+
+  const currentFlatObj = flats.find((f) =>
+    f.flatNumber === activeFlat && f.societyName === currentSocietyName
+  ) || flats.find((f) => f.societyName === currentSocietyName);
+  const currentSocietyObjSocietyName = currentFlatObj?.societyName || currentSocietyName;
 
   // Filters & State
   const todayStr = new Date().toISOString().split('T')[0];
@@ -56,6 +61,8 @@ export const AmenityBookingSection: React.FC = () => {
 
   // Filtered Amenities
   const filteredAmenities = amenities.filter((am) => {
+    if (am.societyName !== currentSocietyObjSocietyName) return false;
+    if (am.isActive === false) return false;
     const matchesCat = selectedCategory === 'All' || am.category.toLowerCase() === selectedCategory.toLowerCase();
     const matchesSearch =
       am.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -65,7 +72,7 @@ export const AmenityBookingSection: React.FC = () => {
   });
 
   // Filtered My Bookings for Active Flat
-  const myBookings = bookings.filter((b) => b.flatNumber === activeFlat);
+  const myBookings = bookings.filter((b) => b.flatNumber === activeFlat && b.societyName === currentSocietyObjSocietyName);
 
   // Helper to check slot booking status
   const getSlotStatus = (amenityId: string, slot: string, date: string) => {
@@ -109,95 +116,142 @@ export const AmenityBookingSection: React.FC = () => {
     if (result.success) {
       setBookingMessage({ type: 'success', text: result.message });
       
-      // Find the created booking to show pass
-      const newlyCreated = bookings.find(
-        (b) =>
-          b.amenityId === bookingModalAmenity.id &&
-          b.date === selectedDate &&
-          b.timeSlot === selectedSlot &&
-          b.flatNumber === activeFlat
-      );
-
-      if (newlyCreated) {
-        setViewPassBooking(newlyCreated);
-      }
+      if (result.booking) setViewPassBooking(result.booking);
       setBookingModalAmenity(null);
     } else {
       setBookingError(result.message);
     }
   };
 
-  // Function to print / download HTML pass
+  // Open a print-ready document so the resident can save the pass as a PDF.
   const handleDownloadFacilityPass = (bk: AmenityBooking) => {
+    const confirmedPlan = guardEventSecurityPlans.find(
+      (plan) =>
+        plan.eventId === `booking:${bk.id}` &&
+        plan.status === 'ready' &&
+        plan.assignedGuardIds?.length &&
+        plan.entryGate &&
+        plan.parkingArea
+    );
+    if (bk.status !== 'confirmed' || !confirmedPlan) {
+      setBookingMessage({
+        type: 'error',
+        text: 'The administrator must confirm this booking’s event plan before its pass can be downloaded.',
+      });
+      return;
+    }
+
     const am = amenities.find((a) => a.id === bk.amenityId);
+    const societyName = currentFlatObj?.societyName || 'Society Management';
+    const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    })[character] || character);
     const passHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Facility Entry Pass - ${bk.amenityName}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Facility Entry Pass - ${escapeHtml(bk.amenityName)}</title>
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; padding: 30px 15px; color: #0f172a; }
-    .card { max-width: 550px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08); }
-    .header { background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; padding: 24px; text-align: center; }
-    .title { font-size: 20px; font-weight: 800; }
-    .subtitle { font-size: 11px; opacity: 0.9; margin-top: 4px; }
-    .body { padding: 24px; }
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; background: #f8fafc; padding: 16px; border-radius: 12px; margin-bottom: 20px; }
-    .item label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; }
-    .item p { font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; }
-    .qr-box { text-align: center; padding: 16px; background: #f1f5f9; border-radius: 12px; margin-bottom: 20px; }
-    .code { font-family: monospace; font-size: 22px; font-weight: 900; color: #059669; letter-spacing: 2px; }
-    .footer { text-align: center; font-size: 11px; color: #64748b; border-top: 1px dashed #e2e8f0; padding-top: 16px; }
-    .btn { background: #059669; color: white; border: none; padding: 10px 20px; font-weight: 700; border-radius: 8px; cursor: pointer; margin-bottom: 15px; }
-    @media print { .no-print { display: none; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: #eef2f0; color: #142c27; font-family: Inter, 'Segoe UI', Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .toolbar { max-width: 760px; margin: 0 auto 16px; text-align: center; }
+    .btn { border: 0; border-radius: 9px; padding: 12px 20px; background: #0b5946; color: #fff; font-weight: 800; cursor: pointer; }
+    .hint { margin: 9px 0 0; color: #64756f; font-size: 12px; }
+    .card { width: 100%; max-width: 760px; min-height: 940px; margin: 0 auto; background: #fffefa; border: 1px solid #d9e2dc; border-radius: 18px; overflow: hidden; box-shadow: 0 14px 40px rgba(20,44,39,.12); }
+    .header { position: relative; padding: 30px 34px 25px; background: linear-gradient(135deg, rgba(7,54,43,.88), rgba(8,68,52,.78)), url('${residencyBackground}') center 52% / cover; color: #fff; text-align: center; }
+    .brand { font-size: 12px; font-weight: 800; letter-spacing: 4px; color: #d5e7d8; text-transform: uppercase; }
+    .society { margin-top: 9px; font-family: Georgia, serif; font-size: 25px; font-weight: 700; }
+    .title { margin-top: 22px; font-family: Georgia, serif; font-size: 29px; font-weight: 700; }
+    .subtitle { margin-top: 7px; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #d7e9df; text-transform: uppercase; }
+    .body { padding: 28px 34px 25px; }
+    .status { padding: 15px; border: 1px solid #b7dfca; border-radius: 12px; background: #edf8f1; text-align: center; }
+    .status-label { color: #527368; font-size: 10px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; }
+    .code { margin-top: 5px; color: #0b5946; font-family: 'Courier New', monospace; font-size: 25px; font-weight: 900; letter-spacing: 3px; }
+    .confirmed { margin-top: 5px; color: #187349; font-size: 11px; font-weight: 800; }
+    .section-title { margin: 24px 0 10px; color: #315d50; font-size: 10px; font-weight: 900; letter-spacing: 1.8px; text-transform: uppercase; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; padding: 5px 17px; border: 1px solid #dce5de; border-radius: 12px; background: #fbfcfa; }
+    .item { min-width: 0; padding: 14px 0; border-bottom: 1px solid #e6ebe6; }
+    .item:last-child, .item:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
+    .item.full { grid-column: 1 / -1; }
+    .item label { display: block; color: #71817a; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; }
+    .item p { margin: 5px 0 0; color: #172f29; font-size: 13px; font-weight: 700; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .footer { margin-top: 24px; padding-top: 17px; border-top: 1px solid #dce5de; color: #60736b; text-align: center; font-size: 10px; line-height: 1.7; }
+    .footer strong { color: #173e33; letter-spacing: 1.5px; }
+    @page { size: A4; margin: 12mm; }
+    @media print {
+      body { padding: 0; background: #fff; }
+      .no-print { display: none !important; }
+      .card { width: 100%; max-width: none; min-height: 0; border-radius: 0; box-shadow: none; }
+      .header, .status, .grid { break-inside: avoid; }
+    }
+    @media screen and (max-width: 560px) {
+      body { padding: 10px; }
+      .header { padding: 24px 18px; }
+      .body { padding: 20px 18px; }
+      .grid { grid-template-columns: 1fr; }
+      .item, .item:last-child, .item:nth-last-child(2):nth-child(odd) { border-bottom: 1px solid #e6ebe6; }
+      .item:last-child { border-bottom: 0; }
+    }
   </style>
 </head>
 <body>
   <div style="text-align: center;" class="no-print">
-    <button class="btn" onclick="window.print()">🖨️ Print / Save Facility Pass PDF</button>
+    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    <p class="hint">In the print dialog, choose “Save as PDF” and enable background graphics for the colours.</p>
   </div>
   <div class="card">
     <div class="header">
-      <div class="title">Emerald Palms CHS • Facility Entry Pass</div>
-      <div class="subtitle">Official Verified Booking Confirmation</div>
+      <div class="brand">Greenvalley Community</div>
+      <div class="society">${escapeHtml(societyName)}</div>
+      <div class="title">Facility Entry Pass</div>
+      <div class="subtitle">Administrator-confirmed booking</div>
     </div>
     <div class="body">
-      <div class="qr-box">
-        <div style="font-size: 11px; color: #64748b; margin-bottom: 6px;">Facility Pass Verification Code</div>
-        <div class="code">${bk.id}</div>
-        <div style="font-size: 10px; color: #059669; margin-top: 4px; font-weight: bold;">✓ STATUS: CONFIRMED & PAID</div>
+      <div class="status">
+        <div class="status-label">Facility Booking Reference</div>
+        <div class="code">${escapeHtml(bk.id)}</div>
+        <div class="confirmed">✓ Confirmed by ${escapeHtml(confirmedPlan.updatedBy)}</div>
       </div>
+      <div class="section-title">Booking details</div>
       <div class="grid">
-        <div class="item"><label>Facility Name</label><p>${bk.amenityName}</p></div>
-        <div class="item"><label>Location</label><p>${am?.location || 'Clubhouse Complex'}</p></div>
-        <div class="item"><label>Booking Date</label><p>${bk.date}</p></div>
-        <div class="item"><label>Allocated Time Slot</label><p>${bk.timeSlot}</p></div>
-        <div class="item"><label>Flat Unit & Resident</label><p>Flat ${bk.flatNumber} • ${bk.residentName}</p></div>
-        <div class="item"><label>Pass Guests Count</label><p>${bk.guestsCount} Person(s)</p></div>
+        <div class="item"><label>Facility Name</label><p>${escapeHtml(bk.amenityName)}</p></div>
+        <div class="item"><label>Booking Reference</label><p>${escapeHtml(bk.id)}</p></div>
+        <div class="item"><label>Booking Date</label><p>${escapeHtml(bk.date)}</p></div>
+        <div class="item"><label>Allocated Time Slot</label><p>${escapeHtml(bk.timeSlot)}</p></div>
+        <div class="item"><label>Flat Unit & Resident</label><p>Flat ${escapeHtml(bk.flatNumber)} • ${escapeHtml(bk.residentName)}</p></div>
+        <div class="item"><label>Approved Entrance</label><p>${escapeHtml(confirmedPlan.entryGate || '')}</p></div>
+        <div class="item"><label>Approved Parking Area</label><p>${escapeHtml(confirmedPlan.parkingArea || '')}</p></div>
       </div>
       <div class="footer">
-        Please present this pass or verification code to the facility manager or security officer prior to entering.<br>
-        Emerald Palms Society Management Suite
+        Present this pass to the facility manager or security officer before entering.<br>
+        <strong>GREENVALLEY · ${escapeHtml(societyName)}</strong><br>
+        Pass is valid only for the booking date and time shown above.
       </div>
     </div>
   </div>
 </body>
 </html>`;
 
-    const blob = new Blob([passHtml], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Facility_Pass_${bk.amenityName.replace(/\s+/g, '_')}_${bk.date}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
     const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(passHtml);
-      win.document.close();
+    if (!win) {
+      setBookingMessage({
+        type: 'error',
+        text: 'The PDF print window was blocked. Allow pop-ups for this site and try again.',
+      });
+      return;
     }
+    win.document.write(passHtml);
+    win.document.close();
+    window.setTimeout(() => {
+      if (win.closed) return;
+      win.focus();
+      win.print();
+    }, 300);
   };
 
   const getCategoryIcon = (category: string) => {
@@ -456,6 +510,14 @@ export const AmenityBookingSection: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {myBookings.map((bk) => {
               const amObj = amenities.find((a) => a.id === bk.amenityId);
+              const hasAdminConfirmedPlan = bk.status === 'confirmed' && guardEventSecurityPlans.some(
+                (plan) =>
+                  plan.eventId === `booking:${bk.id}` &&
+                  plan.status === 'ready' &&
+                  plan.assignedGuardIds?.length &&
+                  plan.entryGate &&
+                  plan.parkingArea
+              );
               return (
                 <div
                   key={bk.id}
@@ -468,12 +530,18 @@ export const AmenityBookingSection: React.FC = () => {
                       </span>
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                          bk.status === 'confirmed'
+                          bk.status === 'cancelled'
+                            ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                            : hasAdminConfirmedPlan
                             ? 'bg-emerald-600 text-white'
-                            : 'bg-rose-100 text-rose-700 border border-rose-200'
+                            : 'bg-amber-100 text-amber-900 border border-amber-200'
                         }`}
                       >
-                        {bk.status}
+                        {bk.status === 'cancelled'
+                          ? 'cancelled'
+                          : hasAdminConfirmedPlan
+                          ? 'Admin confirmed'
+                          : 'Awaiting admin confirmation'}
                       </span>
                     </div>
 
@@ -499,15 +567,21 @@ export const AmenityBookingSection: React.FC = () => {
                         </span>
                       </div>
                     </div>
+                    {!hasAdminConfirmedPlan && bk.status === 'confirmed' && (
+                      <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] font-semibold text-amber-900">
+                        Pass download unlocks after the administrator confirms the entrance, parking, and guard assignment.
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
                     <button
                       onClick={() => handleDownloadFacilityPass(bk)}
-                      className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-emerald-200 transition-colors"
+                      disabled={!hasAdminConfirmedPlan}
+                      className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-emerald-200 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-50"
                     >
                       <Download className="w-3.5 h-3.5 text-emerald-700" />
-                      <span>Download Pass</span>
+                      <span>Download PDF Pass</span>
                     </button>
 
                     {bk.status === 'confirmed' && (
@@ -694,14 +768,14 @@ export const AmenityBookingSection: React.FC = () => {
 
             <div>
               <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">
-                Booking Confirmed!
+                Booking Reserved
               </span>
               <h3 className="text-xl font-black text-slate-900 mt-1">{viewPassBooking.amenityName}</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Facility entry pass issued for Flat {viewPassBooking.flatNumber}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Facility booking for Flat {viewPassBooking.flatNumber}</p>
             </div>
 
             <div className="bg-slate-50 border-2 border-dashed border-emerald-300 p-4 rounded-2xl space-y-2">
-              <div className="text-[11px] text-slate-500 font-bold">Entry Pass Verification Code</div>
+              <div className="text-[11px] text-slate-500 font-bold">Booking Reference</div>
               <div className="text-3xl font-mono font-black text-emerald-700 tracking-widest">
                 {viewPassBooking.id}
               </div>
@@ -710,6 +784,26 @@ export const AmenityBookingSection: React.FC = () => {
                 <strong className="text-slate-800">{viewPassBooking.timeSlot}</strong>
               </div>
             </div>
+
+            {(() => {
+              const isPlanConfirmed = guardEventSecurityPlans.some(
+                (plan) =>
+                  plan.eventId === `booking:${viewPassBooking.id}` &&
+                  plan.status === 'ready' &&
+                  plan.assignedGuardIds?.length &&
+                  plan.entryGate &&
+                  plan.parkingArea
+              );
+              return isPlanConfirmed ? (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">
+                  The administrator confirmed the event plan. Your facility pass is ready to download.
+                </p>
+              ) : (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                  Your booking is reserved. You can download the pass after the administrator confirms the event plan, entrance, parking, and assigned guards.
+                </p>
+              );
+            })()}
 
             <div className="flex gap-2 pt-2">
               <button
@@ -720,10 +814,18 @@ export const AmenityBookingSection: React.FC = () => {
               </button>
               <button
                 onClick={() => handleDownloadFacilityPass(viewPassBooking)}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md"
+                disabled={!guardEventSecurityPlans.some(
+                  (plan) =>
+                    plan.eventId === `booking:${viewPassBooking.id}` &&
+                    plan.status === 'ready' &&
+                    plan.assignedGuardIds?.length &&
+                    plan.entryGate &&
+                    plan.parkingArea
+                )}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-600"
               >
                 <Download className="w-4 h-4" />
-                <span>Download Pass</span>
+                <span>Download PDF Pass</span>
               </button>
             </div>
           </div>

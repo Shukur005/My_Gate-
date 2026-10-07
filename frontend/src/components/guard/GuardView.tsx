@@ -55,8 +55,11 @@ import {
 export const GuardView: React.FC = () => {
   const {
     visitors,
+    domesticWorkerPasses,
     flats,
     verifyAndCheckInVisitor,
+    verifyDomesticWorkerPass,
+    recordDomesticWorkerGateAction,
     quickGateCheckIn,
     checkOutVisitor,
     updateVisitorStatus,
@@ -115,6 +118,8 @@ export const GuardView: React.FC = () => {
   // Verification passcode input state
   const [passcode, setPasscode] = useState('');
   const [passcodeResult, setPasscodeResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [domesticWorkerResult, setDomesticWorkerResult] = useState<{ success: boolean; message: string; worker?: { id: string } } | null>(null);
+  const [expandedWorkerDetailsId, setExpandedWorkerDetailsId] = useState<string | null>(null);
 
   // Fast Check-In Form
   const [flatNumber, setFlatNumber] = useState('B-402');
@@ -217,11 +222,31 @@ export const GuardView: React.FC = () => {
     e.preventDefault();
     if (!passcode.trim()) return;
 
+    if (/^\d{4}$/.test(passcode.trim())) {
+      const workerResult = verifyDomesticWorkerPass(passcode);
+      setDomesticWorkerResult(workerResult);
+      setPasscodeResult(null);
+      setPasscode('');
+      return;
+    }
+
+    setDomesticWorkerResult(null);
     const res = verifyAndCheckInVisitor(passcode);
     setPasscodeResult(res);
     if (res.success) {
       setPasscode('');
     }
+  };
+
+  const handleDomesticWorkerGateAction = (workerId: string, action: 'entry' | 'exit') => {
+    const result = recordDomesticWorkerGateAction(workerId, action, activeShift?.gateStation || entryGate);
+    setDomesticWorkerResult((previous) => ({
+      success: result.success,
+      message: result.message,
+      worker: previous?.worker,
+    }));
+    setStatusUpdateToast(result.message);
+    window.setTimeout(() => setStatusUpdateToast(null), 4000);
   };
 
   const handleQuickCheckInSubmit = (e: React.FormEvent) => {
@@ -1173,7 +1198,7 @@ export const GuardView: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Passcode & QR Verification</h3>
-                <p className="text-xs text-slate-500">Scan QR token or enter 6-digit visitor OTP</p>
+                <p className="text-xs text-slate-500">Enter a 4-digit household staff pass or a visitor OTP / QR token</p>
               </div>
             </div>
 
@@ -1191,7 +1216,7 @@ export const GuardView: React.FC = () => {
             <div>
               <input
                 type="text"
-                placeholder="Enter 6-digit OTP or QR Token (e.g. 849201)"
+                placeholder="4-digit staff pass or visitor pass code"
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 className="w-full bg-slate-50 border-2 border-slate-200 focus:border-slate-900 rounded-xl px-4 py-3 text-center text-lg sm:text-xl font-mono font-bold tracking-wider text-slate-900 focus:outline-none focus:bg-white transition-all"
@@ -1232,6 +1257,73 @@ export const GuardView: React.FC = () => {
                 <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
               )}
               <span>{passcodeResult.message}</span>
+            </div>
+          )}
+
+          {domesticWorkerResult && (
+            <div className={`rounded-xl border p-4 ${
+              domesticWorkerResult.success
+                ? 'border-emerald-200 bg-emerald-50'
+                : 'border-rose-200 bg-rose-50'
+            }`}>
+              <div className="flex items-start gap-2.5">
+                {domesticWorkerResult.success
+                  ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+                  : <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />}
+                <div className="min-w-0 flex-1">
+                  <p className={`text-xs font-extrabold ${domesticWorkerResult.success ? 'text-emerald-950' : 'text-rose-900'}`}>
+                    {domesticWorkerResult.success ? 'Household worker pass verified' : 'Household worker access not verified'}
+                  </p>
+                  <p className={`mt-1 text-xs leading-5 ${domesticWorkerResult.success ? 'text-emerald-900' : 'text-rose-800'}`}>
+                    {domesticWorkerResult.message}
+                  </p>
+                  {domesticWorkerResult.worker && (() => {
+                    const livePass = domesticWorkerPasses.find((item) => item.id === domesticWorkerResult.worker.id);
+                    const pass = livePass || domesticWorkerResult.worker;
+                    return (
+                      <div className="mt-3 rounded-lg border border-white/80 bg-white/80 p-3">
+                        <div className="grid gap-2 text-xs sm:grid-cols-2">
+                          <p><span className="text-slate-500">Worker:</span> <strong className="text-slate-950">{pass.workerName}</strong></p>
+                          <p><span className="text-slate-500">Work type:</span> <strong className="capitalize text-slate-950">{pass.workType}</strong></p>
+                          <p><span className="text-slate-500">Phone:</span> <strong className="text-slate-950">{pass.workerPhone}</strong></p>
+                          {pass.whatsappNumber && <p><span className="text-slate-500">WhatsApp:</span> <strong className="text-slate-950">{pass.whatsappNumber}</strong></p>}
+                          <p><span className="text-slate-500">Flat:</span> <strong className="text-slate-950">{pass.flatNumber}</strong></p>
+                          <p><span className="text-slate-500">Resident:</span> <strong className="text-slate-950">{pass.residentName}</strong></p>
+                          <p><span className="text-slate-500">Pass valid through:</span> <strong className="text-slate-950">{pass.validThrough}</strong></p>
+                          {pass.workerAddress && <p className="sm:col-span-2"><span className="text-slate-500">Home address:</span> <strong className="text-slate-950">{pass.workerAddress}</strong></p>}
+                          {pass.maritalStatus && <p><span className="text-slate-500">Marital status:</span> <strong className="capitalize text-slate-950">{pass.maritalStatus}</strong>{pass.spouseName && <> · <span className="text-slate-500">Spouse:</span> <strong className="text-slate-950">{pass.spouseName}</strong></>}</p>}
+                        </div>
+                        {pass.idDocumentDataUrl && (
+                          <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-50 p-2">
+                            <img
+                              src={pass.idDocumentDataUrl}
+                              alt={`Photo ID for ${pass.workerName}`}
+                              className="h-16 w-20 rounded-md border border-slate-200 object-cover"
+                            />
+                            <p className="text-[11px] text-slate-600">Compare the worker with their registered photo ID.</p>
+                          </div>
+                        )}
+                        <p className={`mt-2 text-[11px] font-bold ${pass.insideSociety ? 'text-amber-800' : 'text-emerald-800'}`}>
+                          Gate status: {pass.insideSociety ? 'Inside society' : 'Outside'}
+                          {pass.lastEntryAt && ` · Last entry ${new Date(pass.lastEntryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} at ${pass.lastEntryGate || 'gate'}`}
+                          {pass.lastExitAt && ` · Last exit ${new Date(pass.lastExitAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                        </p>
+                        {(domesticWorkerResult.success || pass.insideSociety) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDomesticWorkerGateAction(pass.id, pass.insideSociety ? 'exit' : 'entry')}
+                            className={`mt-3 w-full rounded-lg px-3 py-2.5 text-xs font-extrabold text-white ${
+                              pass.insideSociety ? 'bg-slate-700 hover:bg-slate-800' : 'bg-emerald-700 hover:bg-emerald-800'
+                            }`}
+                          >
+                            {pass.insideSociety ? 'Confirm worker exit' : 'Confirm identity & record entry'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1718,9 +1810,115 @@ export const GuardView: React.FC = () => {
       <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
         <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
           <UserCheck className="w-5 h-5 text-slate-700" />
-          <span>Daily Helps & Maid Gate Attendance Toggle</span>
+          <span>Daily Household Staff Gate Attendance</span>
         </h3>
 
+        <div className="space-y-3">
+          <div>
+            <h4 className="text-sm font-bold text-slate-800">Resident-registered workers</h4>
+            <p className="mt-0.5 text-xs text-slate-500">Check the worker’s details and four-digit pass before recording entry or exit.</p>
+          </div>
+          {domesticWorkerPasses.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-500">
+              No household workers have been registered by residents yet.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {domesticWorkerPasses.map((workerPass) => {
+                const today = new Date();
+                const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                const passValid = workerPass.status === 'active' &&
+                  localToday >= workerPass.validFrom &&
+                  localToday <= workerPass.validThrough;
+                const canCheckIn = passValid && !workerPass.insideSociety;
+                const canCheckOut = workerPass.insideSociety;
+                const detailsExpanded = expandedWorkerDetailsId === workerPass.id;
+
+                return (
+                  <article key={workerPass.id} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-xs">
+                    <div className="flex items-start justify-between gap-3 p-4">
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          aria-expanded={detailsExpanded}
+                          onClick={() => setExpandedWorkerDetailsId(detailsExpanded ? null : workerPass.id)}
+                          className="text-left text-sm font-bold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
+                        >
+                          {workerPass.workerName}
+                        </button>
+                        <p className="mt-0.5 capitalize text-slate-600">{workerPass.workType}</p>
+                        <p className="mt-2 text-[11px] text-slate-500">Flat: {workerPass.flatNumber}</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!canCheckIn && !canCheckOut}
+                        onClick={() => setExpandedWorkerDetailsId(detailsExpanded ? null : workerPass.id)}
+                        className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-colors disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${
+                          canCheckOut
+                            ? 'bg-slate-900 text-white hover:bg-slate-800'
+                            : canCheckIn
+                            ? 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+                            : 'bg-slate-200 text-slate-500'
+                        }`}
+                      >
+                        {canCheckOut ? 'Checked-In' : canCheckIn ? 'Mark In' : workerPass.status === 'revoked' ? 'Revoked' : 'Expired'}
+                      </button>
+                    </div>
+                    {detailsExpanded && (
+                      <div className="border-t border-slate-200 bg-white p-4">
+                        <div className="flex flex-col gap-4 sm:flex-row">
+                          {workerPass.idDocumentDataUrl ? (
+                            <img
+                              src={workerPass.idDocumentDataUrl}
+                              alt={`Photo ID for ${workerPass.workerName}`}
+                              className="h-44 w-full rounded-lg border border-slate-200 bg-slate-50 object-contain sm:w-56"
+                            />
+                          ) : (
+                            <div className="flex h-32 w-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400 sm:w-40">
+                              <User className="h-8 w-8" aria-hidden="true" />
+                            </div>
+                          )}
+                          <dl className="grid min-w-0 flex-1 grid-cols-1 gap-x-4 gap-y-2 text-[11px] sm:grid-cols-2">
+                            <div><dt className="text-slate-500">First name</dt><dd className="font-semibold text-slate-900">{workerPass.firstName || workerPass.workerName.split(' ')[0]}</dd></div>
+                            <div><dt className="text-slate-500">Last name</dt><dd className="font-semibold text-slate-900">{workerPass.lastName || workerPass.workerName.split(' ').slice(1).join(' ') || '—'}</dd></div>
+                            <div><dt className="text-slate-500">Mobile</dt><dd className="font-semibold text-slate-900">{workerPass.workerPhone}</dd></div>
+                            <div><dt className="text-slate-500">WhatsApp</dt><dd className="font-semibold text-slate-900">{workerPass.whatsappNumber || 'Not provided'}</dd></div>
+                            <div><dt className="text-slate-500">Role</dt><dd className="font-semibold capitalize text-slate-900">{workerPass.workType}</dd></div>
+                            <div><dt className="text-slate-500">Marital status</dt><dd className="font-semibold capitalize text-slate-900">{workerPass.maritalStatus || 'Not provided'}</dd></div>
+                            {workerPass.spouseName && <div><dt className="text-slate-500">Husband / wife</dt><dd className="font-semibold text-slate-900">{workerPass.spouseName}</dd></div>}
+                            <div><dt className="text-slate-500">Home address</dt><dd className="font-semibold text-slate-900">{workerPass.workerAddress || 'Not provided'}</dd></div>
+                            <div><dt className="text-slate-500">Flat / resident</dt><dd className="font-semibold text-slate-900">{workerPass.flatNumber} · {workerPass.residentName}</dd></div>
+                            <div><dt className="text-slate-500">Pass code</dt><dd className="font-mono font-bold tracking-wider text-slate-900">{workerPass.passCode}</dd></div>
+                            <div><dt className="text-slate-500">Validity</dt><dd className="font-semibold text-slate-900">{workerPass.validFrom} – {workerPass.validThrough}</dd></div>
+                            {workerPass.idDocumentName && <div className="sm:col-span-2"><dt className="text-slate-500">Photo ID file</dt><dd className="font-semibold text-slate-900">{workerPass.idDocumentName}</dd></div>}
+                            {workerPass.lastEntryAt && <div><dt className="text-slate-500">Last entry</dt><dd className="font-semibold text-slate-900">{new Date(workerPass.lastEntryAt).toLocaleString()} · {workerPass.lastEntryGate || 'Gate'}</dd></div>}
+                            {workerPass.lastExitAt && <div><dt className="text-slate-500">Last exit</dt><dd className="font-semibold text-slate-900">{new Date(workerPass.lastExitAt).toLocaleString()}</dd></div>}
+                          </dl>
+                        </div>
+                        {(canCheckIn || canCheckOut) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDomesticWorkerGateAction(workerPass.id, canCheckOut ? 'exit' : 'entry')}
+                            className={`mt-4 w-full rounded-lg px-3 py-2.5 text-xs font-extrabold text-white transition-colors ${
+                              canCheckOut
+                                ? 'bg-slate-900 hover:bg-slate-800'
+                                : 'bg-emerald-700 hover:bg-emerald-800'
+                            }`}
+                          >
+                            {canCheckOut ? 'Confirm check-out' : 'Confirm check-in'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-slate-200 pt-4">
+          <h4 className="mb-3 text-sm font-bold text-slate-800">Daily society staff</h4>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {staff.map((s) => (
             <div
@@ -1740,13 +1938,17 @@ export const GuardView: React.FC = () => {
                       : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                   }`}
                 >
-                  {s.isPresentToday ? 'Checked-In' : 'Mark In'}
+                  {s.isPresentToday ? 'Check-Out' : 'Mark In'}
                 </button>
               </div>
 
-              <p className="text-slate-500 text-[11px]">Flats: {s.flatsAssigned.join(', ')}</p>
+              <p className="text-slate-500 text-[11px]">{s.phone}</p>
+              {s.assignedDuties && <p className="text-slate-600 text-[11px]"><strong>Assigned duties:</strong> {s.assignedDuties}</p>}
+              {s.flatsAssigned.length > 0 && <p className="text-slate-500 text-[11px]">Flats: {s.flatsAssigned.join(', ')}</p>}
+              {s.checkInTime && s.isPresentToday && <p className="text-slate-500 text-[11px]">Checked in at {s.checkInTime}</p>}
             </div>
           ))}
+        </div>
         </div>
       </div>
       </div>
