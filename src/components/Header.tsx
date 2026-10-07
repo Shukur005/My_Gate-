@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useSociety } from '../context/SocietyContext';
 import {
-  ChevronRight,
   AlertTriangle,
   RotateCcw,
   LogOut,
@@ -26,7 +25,7 @@ export const Header: React.FC = () => {
     logout,
   } = useSociety();
 
-  const [societyName, setSocietyName] = useState('Vedanta Niwas');
+  const [societyName, setSocietyName] = useState('The North Tower');
   const [financialYear, setFinancialYear] = useState('2025-2026');
   const [showFAQ, setShowFAQ] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -43,34 +42,29 @@ export const Header: React.FC = () => {
       {/* Crisp, Professional White Header Matching MyGate ERP Screenshot */}
       <header className="bg-white border-b border-slate-200/90 text-slate-800 sticky top-0 z-40 shadow-xs select-none">
         <div className="w-full px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
-          {/* Left: Expand button + Society Name as seen in screenshot */}
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              title="Expand / Collapse Navigation"
-              className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-colors cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                  {societyName}
-                </span>
-                <select
-                  value={societyName}
-                  onChange={(e) => setSocietyName(e.target.value)}
-                  className="text-[11px] text-slate-400 hover:text-slate-600 bg-transparent border-0 cursor-pointer focus:outline-none"
-                >
-                  <option value="Vedanta Niwas">Vedanta Niwas</option>
-                  <option value="Emerald Palms Heights">Emerald Palms Heights</option>
-                </select>
-              </div>
-              <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-bold tracking-tight text-slate-900 sm:text-lg">
+                {societyName}
+              </h1>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                 MyGate ERP Society Suite
               </p>
             </div>
+            <label className="relative flex w-[200px] flex-col rounded-lg border border-slate-300 bg-white px-2.5 py-1 leading-tight focus-within:border-slate-500">
+              <span className="text-[10px] font-medium text-slate-500">Select Society</span>
+              <select
+                value={societyName}
+                onChange={(e) => setSocietyName(e.target.value)}
+                aria-label="Select Society"
+                className="w-full appearance-none bg-transparent pr-6 text-sm font-semibold text-slate-800 outline-none cursor-pointer"
+              >
+                <option value="The North Tower">The North Tower</option>
+                <option value="Vedanta Niwas">Vedanta Niwas</option>
+                <option value="Emerald Palms Heights">Emerald Palms Heights</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            </label>
           </div>
 
           {/* Center / Role Information for Resident Unit */}
