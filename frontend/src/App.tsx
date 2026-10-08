@@ -53,12 +53,10 @@ const MainAppContent: React.FC = () => {
     return <GuestPassView passToken={vpassQueryToken} onExit={handleExitGuestView} />;
   }
 
-  // If user is not authenticated, show role-specific Auth Gateway
   if (!currentUser) {
     return <AuthPortal initialPortal={initialPortal} />;
   }
 
-  // When authenticated, render strictly the authorized view for their role
   return (
     <div className="h-dvh max-h-dvh w-full overflow-hidden bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-emerald-600 selection:text-white">
       <Header />

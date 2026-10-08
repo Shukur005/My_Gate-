@@ -152,7 +152,7 @@ export interface AmenityBooking {
   timeSlot: string;
   guestsCount: number;
   amountPaid: number;
-  status: 'confirmed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'rejected';
   bookingDate: string;
 }
 

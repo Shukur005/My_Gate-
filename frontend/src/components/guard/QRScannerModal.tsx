@@ -87,6 +87,27 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose 
     }
   };
 
+  const isCameraSupported = () => {
+    if (typeof window === 'undefined') {
+      return { supported: false, reason: 'Camera access is unavailable in the current browser context.' };
+    }
+
+    const isSecureContext = window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return { supported: false, reason: 'This browser does not support camera access.' };
+    }
+
+    if (!isSecureContext) {
+      return {
+        supported: false,
+        reason: 'Camera access requires a secure connection. Open the app on localhost or HTTPS and allow camera permission.',
+      };
+    }
+
+    return { supported: true, reason: '' };
+  };
+
   // Start live camera
   const startCamera = async () => {
     setCameraError(null);
@@ -94,12 +115,18 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose 
     setCheckInSuccess(null);
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Camera access is not supported in this browser environment.');
+      const cameraCheck = isCameraSupported();
+      if (!cameraCheck.supported) {
+        throw new Error(cameraCheck.reason);
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+        },
+        audio: false,
       });
 
       streamRef.current = stream;
@@ -111,7 +138,10 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose 
         requestAnimationFrame(tickScan);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unable to access camera.';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Camera permission was denied or no camera is available on this device.';
       setCameraError(msg);
       setCameraActive(false);
     }
@@ -213,15 +243,17 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({ isOpen, onClose 
 
   // Clean up camera on unmount or tab switch
   useEffect(() => {
-    if (isOpen && activeTab === 'camera') {
-      startCamera();
-    } else {
+    if (!isOpen) {
       stopCamera();
+      return;
     }
 
-    return () => {
-      stopCamera();
-    };
+    if (activeTab === 'camera') {
+      void startCamera();
+      return;
+    }
+
+    stopCamera();
   }, [isOpen, activeTab]);
 
   if (!isOpen) return null;

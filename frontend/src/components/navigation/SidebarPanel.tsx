@@ -90,19 +90,6 @@ export const SidebarPanel: React.FC = () => {
   ]);
   const [newChatText, setNewChatText] = useState('');
 
-  const [showParcelsModal, setShowParcelsModal] = useState(false);
-
-  // Deliveries list
-  const recentDeliveries = visitors.filter((v) =>
-    v.category === 'delivery' && v.societyName === currentSocietyName
-  );
-
-  const handleDeleteDelivery = (deliveryId: string, deliveryName: string) => {
-    if (!window.confirm(`Delete the delivery record for "${deliveryName}"? This cannot be undone.`)) return;
-    const result = deleteVisitorPass(deliveryId);
-    if (!result.success) window.alert(result.message);
-  };
-
   const handleNavClick = (id: SidebarNavId) => {
     if (id === 'search') {
       setShowSearchModal(true);
@@ -117,7 +104,6 @@ export const SidebarPanel: React.FC = () => {
       return;
     }
     if (id === 'deliveries') {
-      setShowParcelsModal(true);
       setActiveSidebarNav('deliveries');
       return;
     }
@@ -219,7 +205,7 @@ export const SidebarPanel: React.FC = () => {
     },
     {
       id: 'staff',
-      label: role === 'resident' ? 'Household Staff' : 'Vendors',
+      label: role === 'resident' ? 'Household Staff' : 'Staff',
       category: role === 'resident' ? 'My Home' : 'Services',
       icon: (active) => <UserCheck className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
@@ -320,7 +306,7 @@ export const SidebarPanel: React.FC = () => {
         <nav className={`flex-1 min-h-0 w-full space-y-1.5 overflow-y-auto overflow-x-hidden scrollbar-none py-1 ${isExpanded ? 'px-2' : ''}`}>
           {navItems.filter((item) =>
             (role !== 'resident' || item.id !== 'reports') &&
-            (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports')) &&
+            (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports' && item.id !== 'deliveries')) &&
             item.label.toLowerCase().includes(menuFilter.trim().toLowerCase())
           ).map((item) => {
             const isActive = activeSidebarNav === item.id;
@@ -360,7 +346,7 @@ export const SidebarPanel: React.FC = () => {
           {isExpanded && menuFilter.trim() && !navItems.some((item) =>
             item.label.toLowerCase().includes(menuFilter.trim().toLowerCase()) &&
             (role !== 'resident' || item.id !== 'reports') &&
-            (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports'))
+            (role !== 'guard' || (item.id !== 'accounting' && item.id !== 'reports' && item.id !== 'deliveries'))
           ) && <p className="px-3 py-2 text-sm text-slate-500">No menu items found.</p>}
         </nav>
 
@@ -596,105 +582,6 @@ export const SidebarPanel: React.FC = () => {
         </div>
       )}
 
-      {/* ================= DELIVERIES & PARCELS MODAL ================= */}
-      {showParcelsModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-fade-in">
-          <div className="w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh]">
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950">
-                  <Package className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Gate Parcel & Delivery Tracker</h3>
-                  <p className="text-[11px] text-slate-400">Main Gate 1 & Service Gate 2 Logs</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowParcelsModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 sm:p-5 overflow-y-auto space-y-3">
-              {recentDeliveries.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">
-                  <Package className="mx-auto mb-3 h-8 w-8 text-slate-300" />
-                  <p className="text-sm font-semibold">No delivery records found</p>
-                  <p className="mt-1 text-xs text-slate-400">New gate deliveries will appear here.</p>
-                </div>
-              ) : (
-                recentDeliveries.map((del) => (
-                  <div
-                    key={del.id}
-                    className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-slate-900">{del.visitorName}</span>
-                        <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
-                          {del.companyOrRole || 'Delivery'}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        Destination: <strong>Flat {del.flatNumber}</strong> ({del.residentName})
-                      </div>
-                      <div className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
-                        <Clock className="w-3 h-3" /> Passcode: {del.passcode}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
-                      <span
-                        className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                          del.status === 'in_gate'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : del.status === 'expected'
-                            ? 'bg-blue-100 text-blue-800'
-                            : del.status === 'denied'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        {del.status === 'in_gate'
-                          ? 'At Gate'
-                          : del.status === 'expected'
-                          ? 'Expected'
-                          : del.status === 'denied'
-                          ? 'Denied'
-                          : 'Delivered'}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {del.status !== 'checked_out' && del.status !== 'denied' && (
-                          <button
-                            type="button"
-                            onClick={() => updateVisitorStatus(del.id, 'checked_out')}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-800"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            Mark delivered
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDelivery(del.id, del.visitorName)}
-                          aria-label={`Delete ${del.visitorName} delivery record`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 };
