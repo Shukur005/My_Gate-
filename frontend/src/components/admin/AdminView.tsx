@@ -5,10 +5,16 @@ import type { Amenity, MaintenanceBill, SocietyBankDetails } from '../../types';
 import { ApartmentCensusSection } from './ApartmentCensusSection';
 import { GuardManagementSection } from './GuardManagementSection';
 import { SocietyStaffManagementSection } from './SocietyStaffManagementSection';
+import { AssetsInventorySection } from './AssetsInventorySection';
+import { AdminSettingsSection } from './AdminSettingsSection';
 import {
+  Activity,
+  Bell,
   Building2,
+  CircleDollarSign,
+  DoorOpen,
   DollarSign,
-  TrendingUp,
+  FileClock,
   Receipt,
   FileText,
   AlertCircle,
@@ -20,6 +26,7 @@ import {
   Megaphone,
   Wrench,
   Shield,
+  UserRound,
   ArrowUpRight,
   ArrowDownRight,
   Users,
@@ -48,6 +55,9 @@ export const AdminView: React.FC = () => {
     amenities,
     bookings,
     users,
+    currentUser,
+    visitors,
+    staff,
     societies,
     currentSocietyName,
     guardEventSecurityPlans,
@@ -59,19 +69,39 @@ export const AdminView: React.FC = () => {
     saveGuardEventSecurityPlan,
     updateSocietyBankDetails,
     updateComplaintStatus,
+    approveAmenityBooking,
+    rejectAmenityBooking,
     addNotice,
     deleteNotice,
     activeSidebarNav,
+    setActiveSidebarNav,
   } = useSociety();
 
-  const [adminTab, setAdminTab] = useState<'accounting' | 'flats' | 'complaints' | 'notices' | 'staff' | 'amenities'>('amenities');
+  const [adminTab, setAdminTab] = useState<'dashboard' | 'accounting' | 'flats' | 'complaints' | 'notices' | 'staff' | 'amenities' | 'assets' | 'settings'>(() => {
+    if (activeSidebarNav === 'dashboard') return 'dashboard';
+    if (activeSidebarNav === 'accounting' || activeSidebarNav === 'reports') return 'accounting';
+    if (activeSidebarNav === 'flats' || activeSidebarNav === 'community') return 'flats';
+    if (activeSidebarNav === 'helpdesk') return 'complaints';
+    if (activeSidebarNav === 'notices') return 'notices';
+    if (activeSidebarNav === 'staff') return 'staff';
+    if (activeSidebarNav === 'deliveries') return 'assets';
+    if (activeSidebarNav === 'settings') return 'settings';
+    return 'amenities';
+  });
   const societyFlats = flats.filter((flat) => flat.societyName === currentSocietyName);
+  const societyVisitors = visitors.filter((visitor) => visitor.societyName === currentSocietyName);
   const societyBills = bills.filter((bill) => bill.societyName === currentSocietyName);
   const societyExpenses = expenses.filter((expense) => expense.societyName === currentSocietyName);
   const societyAmenities = amenities.filter((amenity) => amenity.societyName === currentSocietyName);
   const societyBookings = bookings.filter((booking) => booking.societyName === currentSocietyName);
+  const pendingAmenityBookings = societyBookings
+    .filter((booking) => booking.status === 'pending')
+    .sort((first, second) => `${first.date} ${first.timeSlot}`.localeCompare(`${second.date} ${second.timeSlot}`));
   const societyComplaints = complaints.filter((ticket) => ticket.societyName === currentSocietyName);
   const societyNotices = notices.filter((notice) => notice.societyName === currentSocietyName);
+  const societyResidents = users.filter((user) => user.role === 'resident' && user.societyName === currentSocietyName);
+  const societyGuards = users.filter((user) => user.role === 'guard' && user.societyName === currentSocietyName && user.guardStatus !== 'inactive');
+  const societyStaff = staff.filter((person) => person.societyName === currentSocietyName);
   const selectedBankSociety = societies.find((society) => society.name === currentSocietyName);
   const [bankDetails, setBankDetails] = useState<SocietyBankDetails>({
     accountHolderName: '',
@@ -84,6 +114,7 @@ export const AdminView: React.FC = () => {
     upiId: '',
   });
   const [bankDetailsNotice, setBankDetailsNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [amenityBookingNotice, setAmenityBookingNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     const saved = selectedBankSociety?.bankDetails;
@@ -113,10 +144,19 @@ export const AdminView: React.FC = () => {
     setBankDetailsNotice({ type: result.success ? 'success' : 'error', message: result.message });
   };
 
+  const handleAmenityBookingDecision = (bookingId: string, decision: 'approve' | 'reject') => {
+    const result = decision === 'approve'
+      ? approveAmenityBooking(bookingId)
+      : rejectAmenityBooking(bookingId);
+    setAmenityBookingNotice({ type: result.success ? 'success' : 'error', message: result.message });
+  };
+
   // Synchronize with left sidebar selection
   useEffect(() => {
     if (activeSidebarNav === 'accounting' || activeSidebarNav === 'reports') {
       setAdminTab('accounting');
+    } else if (activeSidebarNav === 'dashboard') {
+      setAdminTab('dashboard');
     } else if (activeSidebarNav === 'flats' || activeSidebarNav === 'community') {
       setAdminTab('flats');
     } else if (activeSidebarNav === 'helpdesk') {
@@ -127,8 +167,10 @@ export const AdminView: React.FC = () => {
       setAdminTab('staff');
     } else if (activeSidebarNav === 'calendar') {
       setAdminTab('amenities');
-    } else if (activeSidebarNav === 'dashboard') {
-      setAdminTab('accounting');
+    } else if (activeSidebarNav === 'deliveries') {
+      setAdminTab('assets');
+    } else if (activeSidebarNav === 'settings') {
+      setAdminTab('settings');
     }
   }, [activeSidebarNav]);
 
@@ -280,6 +322,21 @@ export const AdminView: React.FC = () => {
   const activeGuards = users.filter((user) => user.role === 'guard' && user.guardStatus !== 'inactive' &&
     (user.societyName === currentSocietyName || (!user.societyName && currentSocietyName === societies[0]?.name)));
   const todayDate = new Date().toISOString().split('T')[0];
+  const visitorsToday = societyVisitors.filter((visitor) => visitor.expectedDate === todayDate);
+  const visitorsInGate = societyVisitors.filter((visitor) => visitor.status === 'in_gate');
+  const visitorsCheckedOut = societyVisitors.filter((visitor) => visitor.status === 'checked_out');
+  const openTickets = societyComplaints.filter((ticket) => ticket.status !== 'resolved');
+  const paidBills = societyBills.filter((bill) => bill.status === 'paid');
+  const collectionProgress = societyBills.length
+    ? Math.round((paidBills.length / societyBills.length) * 100)
+    : 0;
+  const occupiedFlats = societyFlats.filter((flat) => flat.occupancyStatus !== 'Vacant');
+  const recentVisitors = [...societyVisitors].sort((first, second) =>
+    (second.generatedAt || second.expectedDate).localeCompare(first.generatedAt || first.expectedDate)
+  ).slice(0, 5);
+  const recentPaidBills = [...paidBills].sort((first, second) =>
+    (second.paidDate || second.dueDate).localeCompare(first.paidDate || first.dueDate)
+  ).slice(0, 3);
   const eventSecurityItems = [
     ...societyNotices
       .filter((notice) => notice.category === 'Event')
@@ -503,9 +560,23 @@ export const AdminView: React.FC = () => {
     setShowAddRecipient(false);
   };
 
+  const handleDashboardMetricAction = (action: 'residents' | 'visitors' | 'helpdesk' | 'accounting') => {
+    if (action === 'visitors') {
+      document.getElementById('admin-dashboard-visitors')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    const destination = {
+      residents: 'community',
+      helpdesk: 'helpdesk',
+      accounting: 'accounting',
+    } as const;
+    setActiveSidebarNav(destination[action]);
+  };
+
   return (
     <div className="w-full min-h-screen bg-[#f8fafc] text-slate-800 pb-16 font-sans">
-      {/* Top Professional Breadcrumb Bar Matching MyGate ERP Screenshot */}
+      {adminTab !== 'dashboard' && adminTab !== 'assets' && adminTab !== 'settings' && (
       <div className="bg-white border-b border-slate-200/90 px-6 py-2.5 flex items-center justify-between text-xs text-slate-500">
         <div className="flex items-center gap-1.5 font-medium">
           {adminTab === 'amenities' && (
@@ -517,9 +588,9 @@ export const AdminView: React.FC = () => {
           )}
           {adminTab === 'accounting' && (
             <>
-              <span className="text-slate-800 font-semibold">Accounting</span>
+              <span className="text-slate-800 font-semibold">Accounts</span>
               <span className="text-slate-400">&gt;&gt;</span>
-              <span className="text-slate-500">Maintenance Bills & Invoices</span>
+              <span className="text-slate-500">Bank Details & Financial Ledger</span>
             </>
           )}
           {adminTab === 'flats' && (
@@ -608,9 +679,338 @@ export const AdminView: React.FC = () => {
           </>
         )}
       </div>
+      )}
 
       {/* Main Container */}
-      <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${activeSidebarNav === 'community' ? 'py-4 space-y-4' : 'py-6 space-y-8'}`}>
+      <div className={`${adminTab === 'dashboard' || adminTab === 'assets' || adminTab === 'settings' ? 'mx-auto w-full max-w-none space-y-5 px-0 py-0' : `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${activeSidebarNav === 'community' ? 'py-4 space-y-4' : 'py-6 space-y-8'}`}`}>
+        {adminTab === 'settings' && <AdminSettingsSection key={currentSocietyName} />}
+        {adminTab === 'dashboard' && (
+          <div className="grid w-full items-start gap-5 xl:grid-cols-12">
+            <div className="space-y-5 xl:col-span-8">
+              {pendingAmenityBookings.length > 0 && (
+                <section className="overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 shadow-md">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <span className="relative flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                        <Bell className="h-5 w-5" />
+                        <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">
+                          {pendingAmenityBookings.length}
+                        </span>
+                      </span>
+                      <div>
+                        <h2 className="text-base font-bold text-slate-900">Amenity booking requests</h2>
+                        <p className="text-xs text-slate-600">New resident requests awaiting your approval.</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-bold text-amber-800">
+                      {pendingAmenityBookings.length} pending
+                    </span>
+                  </div>
+                  {amenityBookingNotice && (
+                    <p role="status" className={`mx-5 mt-4 rounded-lg border px-3 py-2 text-xs font-semibold ${
+                      amenityBookingNotice.type === 'success'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : 'border-rose-200 bg-rose-50 text-rose-800'
+                    }`}>
+                      {amenityBookingNotice.message}
+                    </p>
+                  )}
+                  <div className="divide-y divide-amber-100">
+                    {pendingAmenityBookings.map((booking) => (
+                      <div key={booking.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900">{booking.amenityName} <span className="font-medium text-slate-500">· Flat {booking.flatNumber}</span></p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {booking.residentName} · {booking.date} · {booking.timeSlot} · {booking.guestsCount} guest{booking.guestsCount === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAmenityBookingDecision(booking.id, 'approve')}
+                            className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAmenityBookingDecision(booking.id, 'reject')}
+                            className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              <section className="rounded-2xl border border-sky-100 bg-gradient-to-br from-white via-sky-50/70 to-indigo-50/70 p-5 shadow-md sm:p-7">
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-2xl font-bold tracking-tight text-slate-900">
+                      Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {currentUser?.name || 'Admin'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">Here’s what’s happening in {currentSocietyName} today.</p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-2 text-xs font-medium text-slate-600 shadow-sm">
+                    <Activity className="h-4 w-4 text-emerald-600" />
+                    Live society data
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {[
+                    { label: 'New Residents', value: societyResidents.filter((user) => user.createdAt.slice(0, 10) === todayDate).length, icon: UserPlus, style: 'bg-sky-100 text-sky-800', card: 'from-sky-50 to-blue-100/70 border-sky-200', description: 'Added today', action: 'residents' as const },
+                    { label: 'Visitor Activity', value: visitorsToday.length, icon: DoorOpen, style: 'bg-emerald-100 text-emerald-800', card: 'from-emerald-50 to-teal-100/70 border-emerald-200', description: 'Expected today', action: 'visitors' as const },
+                    { label: 'Open Help Desk Tickets', value: openTickets.length, icon: AlertCircle, style: 'bg-orange-100 text-orange-800', card: 'from-orange-50 to-amber-100/70 border-orange-200', description: 'Awaiting resolution', action: 'helpdesk' as const },
+                    { label: 'Outstanding Dues', value: `₹${totalPending.toLocaleString()}`, icon: CircleDollarSign, style: 'bg-violet-100 text-violet-800', card: 'from-violet-50 to-purple-100/70 border-violet-200', description: 'Pending and overdue bills', action: 'accounting' as const },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => handleDashboardMetricAction(item.action)}
+                        aria-label={`View ${item.label}`}
+                        className={`flex min-h-[100px] w-full cursor-pointer items-center justify-between rounded-xl border bg-gradient-to-br px-4 py-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${item.card}`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <span className={`flex h-12 w-12 items-center justify-center rounded-full shadow-sm ${item.style}`}>
+                            <Icon className="h-6 w-6" />
+                          </span>
+                          <div>
+                            <p className="text-xs font-semibold text-slate-600">{item.label}</p>
+                            <p className="text-2xl font-bold leading-8 text-slate-900">{item.value}</p>
+                            <p className="text-[11px] text-slate-500">{item.description}</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-5 w-5 shrink-0 rounded-full bg-white p-1 text-slate-500 shadow-sm" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <section className="rounded-2xl border border-sky-100 bg-gradient-to-br from-white to-sky-50/80 p-5 shadow-md">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-base font-bold text-slate-800">Visitor & Security Overview</h2>
+                    <span className="text-[10px] text-slate-400">All recorded passes</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full shadow-sm" style={{ background: 'conic-gradient(#10b981 0deg 120deg, #3b82f6 120deg 250deg, #f97316 250deg 360deg)' }}>
+                      <div className="flex h-[78px] w-[78px] flex-col items-center justify-center rounded-full bg-white">
+                        <span className="text-2xl font-bold text-slate-800">{societyVisitors.length}</span>
+                        <span className="text-[9px] text-slate-500">Total visitors</span>
+                      </div>
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-2 text-[11px]">
+                      <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 text-slate-500"><i className="h-2 w-2 rounded-full bg-emerald-500" />In gate</span><strong className="text-slate-700">{visitorsInGate.length}</strong></div>
+                      <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 text-slate-500"><i className="h-2 w-2 rounded-full bg-blue-500" />Expected</span><strong className="text-slate-700">{societyVisitors.filter((visitor) => visitor.status === 'expected' || visitor.status === 'pending_approval').length}</strong></div>
+                      <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 text-slate-500"><i className="h-2 w-2 rounded-full bg-orange-500" />Checked out</span><strong className="text-slate-700">{visitorsCheckedOut.length}</strong></div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/80 p-5 shadow-md">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-base font-bold text-slate-800">Today’s Gate Activity</h2>
+                    <span className="text-[10px] text-slate-400">{new Date().toLocaleDateString()}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-100 to-green-50 p-4">
+                      <p className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700"><ArrowDownRight className="h-4 w-4" /> In gate</p>
+                      <p className="mt-1 text-2xl font-semibold text-slate-900">{visitorsInGate.length}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">Currently on site</p>
+                    </div>
+                    <div className="rounded-xl border border-rose-200 bg-gradient-to-br from-rose-100 to-pink-50 p-4">
+                      <p className="flex items-center gap-1.5 text-[11px] font-medium text-rose-700"><ArrowUpRight className="h-4 w-4" /> Checked out</p>
+                      <p className="mt-1 text-2xl font-semibold text-slate-900">{visitorsCheckedOut.length}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">Recorded exits</p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <section className="rounded-2xl border border-violet-100 bg-gradient-to-r from-white via-violet-50/60 to-sky-50/70 p-5 shadow-md">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-base font-bold text-slate-800">Quick Actions</h2>
+                  <span className="text-[10px] text-slate-400">Go to a management section</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    { label: 'Notices', icon: Bell, nav: 'notices' as const, tone: 'text-emerald-700 bg-emerald-50' },
+                    { label: 'Help Desk', icon: FileClock, nav: 'helpdesk' as const, tone: 'text-sky-700 bg-sky-50' },
+                    { label: 'Accounts', icon: Receipt, nav: 'accounting' as const, tone: 'text-violet-700 bg-violet-50' },
+                    { label: 'People Hub', icon: Users, nav: 'community' as const, tone: 'text-amber-700 bg-amber-50' },
+                  ].map((action) => {
+                    const Icon = action.icon;
+                    return (
+                      <button key={action.label} type="button" onClick={() => setActiveSidebarNav(action.nav)} className="flex min-h-12 items-center gap-2 rounded-xl border border-white bg-white/80 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md">
+                        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${action.tone}`}><Icon className="h-5 w-5" /></span>
+                        <span className="text-xs font-semibold text-slate-700">{action.label}</span>
+                        <ChevronRight className="ml-auto h-3.5 w-3.5 text-slate-400" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <div className="grid gap-5 lg:grid-cols-5">
+                <section id="admin-dashboard-visitors" className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-md lg:col-span-3">
+                  <div className="flex items-center justify-between border-b border-sky-100 bg-gradient-to-r from-sky-50 to-white px-5 py-4">
+                    <h2 className="text-base font-bold text-slate-800">Recent Visitors</h2>
+                    <span className="text-[10px] text-slate-400">{societyVisitors.length} records</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {recentVisitors.length ? recentVisitors.map((visitor) => (
+                      <div key={visitor.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] font-semibold text-slate-800">{visitor.visitorName}</p>
+                          <p className="truncate text-[10px] text-slate-500">Flat {visitor.flatNumber} · {visitor.category}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold ${
+                          visitor.status === 'in_gate' ? 'bg-emerald-100 text-emerald-700' :
+                            visitor.status === 'checked_out' ? 'bg-slate-100 text-slate-600' :
+                              visitor.status === 'denied' ? 'bg-rose-100 text-rose-700' : 'bg-sky-100 text-sky-700'
+                        }`}>{visitor.status.replace('_', ' ')}</span>
+                      </div>
+                    )) : <p className="px-4 py-5 text-xs text-slate-500">No visitor passes recorded for this society yet.</p>}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/80 p-5 shadow-md lg:col-span-2">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-base font-bold text-slate-800">Dues Collection</h2>
+                    <button type="button" onClick={() => setActiveSidebarNav('accounting')} className="text-[10px] font-semibold text-sky-700 hover:text-sky-900">View accounts <ArrowUpRight className="inline h-3 w-3" /></button>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full shadow-sm" style={{ background: `conic-gradient(#10b981 0% ${collectionProgress}%, #e2e8f0 ${collectionProgress}% 100%)` }}>
+                      <div className="flex h-[70px] w-[70px] items-center justify-center rounded-full bg-white text-base font-bold text-slate-700">{collectionProgress}%</div>
+                    </div>
+                    <div className="min-w-0 space-y-1 text-[10px]">
+                      <p className="text-slate-500">Paid <strong className="block text-sm text-emerald-700">₹{maintenanceCollected.toLocaleString()}</strong></p>
+                      <p className="text-slate-500">Pending <strong className="block text-sm text-rose-600">₹{totalPending.toLocaleString()}</strong></p>
+                    </div>
+                  </div>
+                  <div className="mt-3 border-t border-slate-100 pt-3">
+                    <h3 className="mb-2 text-[11px] font-semibold text-slate-700">Recent Payments</h3>
+                    {recentPaidBills.length ? recentPaidBills.map((bill) => (
+                      <div key={bill.id} className="flex items-center justify-between gap-2 py-1.5 text-[10px]">
+                        <span className="truncate text-slate-600">Flat {bill.flatNumber} · {bill.ownerName}</span>
+                        <strong className="shrink-0 text-slate-800">₹{bill.totalAmount.toLocaleString()}</strong>
+                      </div>
+                    )) : <p className="text-[10px] text-slate-500">No paid bills to show yet.</p>}
+                  </div>
+                </section>
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <section className="rounded-2xl border border-orange-100 bg-gradient-to-br from-white to-orange-50/80 p-5 shadow-md">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-base font-bold text-slate-800">Help Desk Tickets</h2>
+                    <button type="button" onClick={() => setActiveSidebarNav('helpdesk')} className="text-[10px] font-semibold text-sky-700">View all <ArrowUpRight className="inline h-3 w-3" /></button>
+                  </div>
+                  {[
+                    { label: 'Open', count: societyComplaints.filter((ticket) => ticket.status === 'open').length, tone: 'bg-sky-500' },
+                    { label: 'In progress', count: societyComplaints.filter((ticket) => ticket.status === 'in_progress').length, tone: 'bg-amber-500' },
+                    { label: 'Resolved', count: societyComplaints.filter((ticket) => ticket.status === 'resolved').length, tone: 'bg-emerald-500' },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center justify-between border-t border-slate-50 py-2 text-[11px]">
+                      <span className="flex items-center gap-2 text-slate-600"><i className={`h-2.5 w-2.5 rounded-full ${item.tone}`} />{item.label}</span>
+                      <strong className="text-slate-700">{item.count}</strong>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="rounded-2xl border border-violet-100 bg-gradient-to-br from-white to-violet-50/80 p-5 shadow-md">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-base font-bold text-slate-800">Recent Notices</h2>
+                    <button type="button" onClick={() => setActiveSidebarNav('notices')} className="text-[10px] font-semibold text-sky-700">View all <ArrowUpRight className="inline h-3 w-3" /></button>
+                  </div>
+                  {societyNotices.slice(0, 3).map((notice) => (
+                    <div key={notice.id} className="flex items-center justify-between gap-3 border-t border-slate-50 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[11px] font-medium text-slate-700">{notice.title}</p>
+                        <p className="text-[9px] text-slate-400">{notice.category}</p>
+                      </div>
+                      <span className="shrink-0 text-[9px] text-slate-400">{notice.date}</span>
+                    </div>
+                  ))}
+                  {societyNotices.length === 0 && <p className="text-[10px] text-slate-500">No notices have been posted yet.</p>}
+                </section>
+              </div>
+            </div>
+
+            <aside className="space-y-5 xl:col-span-4">
+              <section className="rounded-2xl border border-sky-100 bg-gradient-to-br from-white to-sky-50/80 p-5 shadow-md">
+                <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-700">Shortcuts</h2>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 xl:grid-cols-3">
+                  {[
+                    { label: 'Notices', icon: Bell, nav: 'notices' as const },
+                    { label: 'Helpdesk', icon: FileClock, nav: 'helpdesk' as const },
+                    { label: 'All Dues', icon: Receipt, nav: 'accounting' as const },
+                    { label: 'People', icon: Users, nav: 'community' as const },
+                    { label: 'Visitor Log', icon: DoorOpen, nav: 'visitors' as const },
+                  ].map((shortcut) => {
+                    const Icon = shortcut.icon;
+                    return (
+                      <button key={shortcut.label} type="button" onClick={() => {
+                        if (shortcut.nav === 'visitors') {
+                          document.getElementById('admin-dashboard-visitors')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        } else {
+                          setActiveSidebarNav(shortcut.nav);
+                        }
+                      }} className="flex flex-col items-center gap-1.5 border-r border-slate-100 px-1 py-2 text-center text-[10px] text-slate-600 transition hover:text-emerald-700">
+                        <Icon className="h-5 w-5 text-slate-700" />
+                        {shortcut.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50/80 p-5 shadow-md">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-base font-bold text-slate-800">Society Snapshot</h2>
+                  <Building2 className="h-4 w-4 text-sky-600" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Total Flats', value: societyFlats.length, icon: Building2, tone: 'bg-sky-50 text-sky-700' },
+                    { label: 'Occupied', value: occupiedFlats.length, icon: Home, tone: 'bg-emerald-50 text-emerald-700' },
+                    { label: 'Vacant', value: societyFlats.length - occupiedFlats.length, icon: DoorOpen, tone: 'bg-amber-50 text-amber-700' },
+                    { label: 'Residents', value: societyResidents.length, icon: Users, tone: 'bg-violet-50 text-violet-700' },
+                    { label: 'Guards', value: societyGuards.length, icon: Shield, tone: 'bg-sky-50 text-sky-700' },
+                    { label: 'Society Staff', value: societyStaff.length, icon: UserRound, tone: 'bg-orange-50 text-orange-700' },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={item.label} className="flex min-h-[62px] items-center gap-2 rounded-xl border border-white bg-white/80 p-3 shadow-sm">
+                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-5 w-5" /></span>
+                        <div><p className="text-[10px] font-medium text-slate-500">{item.label}</p><p className="text-base font-bold text-slate-800">{item.value}</p></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/80 p-5 shadow-md">
+                <h2 className="mb-3 text-base font-bold text-slate-800">Financial Summary</h2>
+                <div className="space-y-3 text-xs">
+                  <div className="flex justify-between gap-2"><span className="text-slate-500">Revenue collected</span><strong className="text-emerald-700">₹{totalCollected.toLocaleString()}</strong></div>
+                  <div className="flex justify-between gap-2"><span className="text-slate-500">Operational expenses</span><strong className="text-rose-600">₹{totalSpent.toLocaleString()}</strong></div>
+                  <div className="flex justify-between gap-2 border-t border-slate-100 pt-2"><span className="text-slate-700">Net surplus</span><strong className="text-slate-900">₹{netSurplus.toLocaleString()}</strong></div>
+                </div>
+              </section>
+            </aside>
+          </div>
+        )}
+
+        {adminTab === 'assets' && (
+          <AssetsInventorySection key={currentSocietyName} societyName={currentSocietyName} />
+        )}
+
         {/* ================= AMENITIES TAB (EXACTLY MATCHING USER'S SCREENSHOT) ================= */}
         {adminTab === 'amenities' && (
           <div className="space-y-8">
@@ -889,7 +1289,8 @@ export const AdminView: React.FC = () => {
         {/* ================= ACCOUNTING & LEDGER TAB (NEAT WHITE GRIDS) ================= */}
         {adminTab === 'accounting' && (
           <div className="space-y-8">
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+            {adminTab === 'accounting' && (
+              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
               <div className="flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                 <div className="flex items-start gap-3">
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-2.5 text-emerald-700">
@@ -966,34 +1367,36 @@ export const AdminView: React.FC = () => {
               ) : (
                 <p className="p-6 text-sm text-slate-500">No societies are available to configure.</p>
               )}
-            </section>
+              </section>
+            )}
 
             {/* Top Financial Summary KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white border border-slate-200/90 p-5 rounded-xl shadow-xs space-y-1">
-                <span className="text-slate-500 text-xs font-semibold block">Total Revenue Collected</span>
-                <p className="text-2xl font-black text-emerald-600">₹{totalCollected.toLocaleString()}</p>
-                <p className="text-[11px] text-slate-400">Maintenance and amenity collections</p>
-              </div>
+            {adminTab === 'accounting' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white border border-slate-200/90 p-5 rounded-xl shadow-xs space-y-1">
+                  <span className="text-slate-500 text-xs font-semibold block">Total Revenue Collected</span>
+                  <p className="text-2xl font-black text-emerald-600">₹{totalCollected.toLocaleString()}</p>
+                  <p className="text-[11px] text-slate-400">Maintenance and amenity collections</p>
+                </div>
+                <div className="bg-white border border-slate-200/90 p-5 rounded-xl shadow-xs space-y-1">
+                  <span className="text-slate-500 text-xs font-semibold block">Outstanding Dues</span>
+                  <p className="text-2xl font-black text-amber-600">₹{totalPending.toLocaleString()}</p>
+                  <p className="text-[11px] text-slate-400">{currentSocietyName} pending bills</p>
+                </div>
 
-              <div className="bg-white border border-slate-200/90 p-5 rounded-xl shadow-xs space-y-1">
-                <span className="text-slate-500 text-xs font-semibold block">Outstanding Dues</span>
-                <p className="text-2xl font-black text-amber-600">₹{totalPending.toLocaleString()}</p>
-                <p className="text-[11px] text-slate-400">{currentSocietyName} pending bills</p>
-              </div>
+                <div className="bg-white border border-slate-200/90 p-5 rounded-xl shadow-xs space-y-1">
+                  <span className="text-slate-500 text-xs font-semibold block">Operational Expenses</span>
+                  <p className="text-2xl font-black text-rose-600">₹{totalSpent.toLocaleString()}</p>
+                  <p className="text-[11px] text-slate-400">Security, Lift AMC, Utilities</p>
+                </div>
 
-              <div className="bg-white border border-slate-200/90 p-5 rounded-xl shadow-xs space-y-1">
-                <span className="text-slate-500 text-xs font-semibold block">Operational Expenses</span>
-                <p className="text-2xl font-black text-rose-600">₹{totalSpent.toLocaleString()}</p>
-                <p className="text-[11px] text-slate-400">Security, Lift AMC, Utilities</p>
+                <div className="bg-white border border-slate-200/90 p-5 rounded-xl shadow-xs space-y-1">
+                  <span className="text-slate-500 text-xs font-semibold block">Treasury Net Surplus</span>
+                  <p className="text-2xl font-black text-slate-900">₹{netSurplus.toLocaleString()}</p>
+                  <p className="text-[11px] text-emerald-600 font-semibold">Reserve Fund Solvent</p>
+                </div>
               </div>
-
-              <div className="bg-white border border-slate-200/90 p-5 rounded-xl shadow-xs space-y-1">
-                <span className="text-slate-500 text-xs font-semibold block">Treasury Net Surplus</span>
-                <p className="text-2xl font-black text-slate-900">₹{netSurplus.toLocaleString()}</p>
-                <p className="text-[11px] text-emerald-600 font-semibold">Reserve Fund Solvent</p>
-              </div>
-            </div>
+            )}
 
             {/* Section 1: Maintenance Invoices & Ledger Grid */}
             <div className="bg-white rounded-xl shadow-xs border border-slate-200/90 p-6 space-y-4">

@@ -330,6 +330,8 @@ interface SocietyContextType {
     message: string;
     booking?: AmenityBooking;
   };
+  approveAmenityBooking: (bookingId: string) => { success: boolean; message: string };
+  rejectAmenityBooking: (bookingId: string) => { success: boolean; message: string };
   cancelBooking: (bookingId: string) => void;
 
   submitComplaint: (data: Omit<ComplaintTicket, 'id' | 'createdAt' | 'status' | 'flatNumber' | 'residentName'>) => void;
@@ -378,7 +380,9 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [activeSidebarNav, setActiveSidebarNav] = useState<SidebarNavId>('accounting');
+  const [activeSidebarNav, setActiveSidebarNav] = useState<SidebarNavId>(() =>
+    currentUser?.role === 'admin' ? 'dashboard' : 'accounting'
+  );
 
   const [role, setRole] = useState<UserRole>(() => {
     const savedUser = localStorage.getItem('mygate_current_user');
@@ -1713,7 +1717,8 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Check existing booking conflict
     const conflict = bookings.find(
-      (b) => b.amenityId === amenityId && b.date === date && b.timeSlot === timeSlot && b.status === 'confirmed'
+      (b) => b.amenityId === amenityId && b.date === date && b.timeSlot === timeSlot &&
+        b.status !== 'cancelled' && b.status !== 'rejected'
     );
 
     if (conflict) {
@@ -1732,16 +1737,53 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       timeSlot,
       guestsCount,
       amountPaid: price,
-      status: 'confirmed',
+      status: 'pending',
       bookingDate: new Date().toISOString().split('T')[0],
     };
 
     setBookings((prev) => [newBooking, ...prev]);
     return {
       success: true,
-      message: `Booking reserved for ${targetAmenity.name}. The administrator must confirm the event plan before the pass can be downloaded.`,
+      message: `Your ${targetAmenity.name} booking request was sent to the society administrator for approval.`,
       booking: newBooking,
     };
+  };
+
+  const approveAmenityBooking = (bookingId: string): { success: boolean; message: string } => {
+    if (role !== 'admin' || currentUser?.role !== 'admin') {
+      return { success: false, message: 'Only a signed-in society administrator can approve amenity bookings.' };
+    }
+    const booking = bookings.find((item) => item.id === bookingId && item.societyName === currentSocietyName);
+    if (!booking) return { success: false, message: 'Amenity booking was not found for this society.' };
+    if (booking.status !== 'pending') return { success: false, message: 'This booking request is no longer awaiting approval.' };
+    const confirmedConflict = bookings.some((item) =>
+      item.id !== bookingId &&
+      item.amenityId === booking.amenityId &&
+      item.date === booking.date &&
+      item.timeSlot === booking.timeSlot &&
+      item.status !== 'cancelled' &&
+      item.status !== 'rejected'
+    );
+    if (confirmedConflict) {
+      return { success: false, message: 'This time slot has already been confirmed for another booking.' };
+    }
+    setBookings((previous) => previous.map((item) =>
+      item.id === bookingId ? { ...item, status: 'confirmed' } : item
+    ));
+    return { success: true, message: `${booking.amenityName} booking for ${booking.residentName} approved.` };
+  };
+
+  const rejectAmenityBooking = (bookingId: string): { success: boolean; message: string } => {
+    if (role !== 'admin' || currentUser?.role !== 'admin') {
+      return { success: false, message: 'Only a signed-in society administrator can reject amenity bookings.' };
+    }
+    const booking = bookings.find((item) => item.id === bookingId && item.societyName === currentSocietyName);
+    if (!booking) return { success: false, message: 'Amenity booking was not found for this society.' };
+    if (booking.status !== 'pending') return { success: false, message: 'This booking request is no longer awaiting approval.' };
+    setBookings((previous) => previous.map((item) =>
+      item.id === bookingId ? { ...item, status: 'rejected' } : item
+    ));
+    return { success: true, message: `${booking.amenityName} booking request for ${booking.residentName} was rejected.` };
   };
 
   const cancelBooking = (bookingId: string) => {
@@ -2682,6 +2724,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setCurrentUser(adminUser);
     setRole('admin');
+    setActiveSidebarNav('dashboard');
     return {
       success: true,
       message: `Authenticated as ${adminUser.designation || 'Estate Administrator'}: ${adminUser.name}.`,
@@ -2731,6 +2774,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setUsers((prev) => [...prev, newAdmin]);
     setCurrentUser(newAdmin);
     setRole('admin');
+    setActiveSidebarNav('dashboard');
 
     return {
       success: true,
@@ -2749,6 +2793,9 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (target) {
       setCurrentUser(target);
       setRole(target.role);
+      if (target.role === 'admin') {
+        setActiveSidebarNav('dashboard');
+      }
       if (target.role === 'resident' && target.flatNumber) {
         setActiveFlat(target.flatNumber);
       }
@@ -2858,6 +2905,8 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         createBill,
         addExpense,
         bookAmenity,
+        approveAmenityBooking,
+        rejectAmenityBooking,
         cancelBooking,
         submitComplaint,
         updateComplaintStatus,

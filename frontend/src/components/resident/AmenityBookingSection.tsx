@@ -77,7 +77,12 @@ export const AmenityBookingSection: React.FC = () => {
   // Helper to check slot booking status
   const getSlotStatus = (amenityId: string, slot: string, date: string) => {
     const existing = bookings.find(
-      (b) => b.amenityId === amenityId && b.date === date && b.timeSlot === slot && b.status === 'confirmed'
+      (b) =>
+        b.amenityId === amenityId &&
+        b.date === date &&
+        b.timeSlot === slot &&
+        b.status !== 'cancelled' &&
+        b.status !== 'rejected'
     );
     if (existing) {
       return {
@@ -209,7 +214,7 @@ export const AmenityBookingSection: React.FC = () => {
       <div class="brand">Greenvalley Community</div>
       <div class="society">${escapeHtml(societyName)}</div>
       <div class="title">Facility Entry Pass</div>
-      <div class="subtitle">Administrator-confirmed booking</div>
+      <div class="subtitle">Approved facility booking</div>
     </div>
     <div class="body">
       <div class="status">
@@ -530,18 +535,22 @@ export const AmenityBookingSection: React.FC = () => {
                       </span>
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                          bk.status === 'cancelled'
-                            ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                            : hasAdminConfirmedPlan
+                          bk.status === 'confirmed' && hasAdminConfirmedPlan
                             ? 'bg-emerald-600 text-white'
-                            : 'bg-amber-100 text-amber-900 border border-amber-200'
+                            : bk.status === 'cancelled' || bk.status === 'rejected'
+                              ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                              : 'bg-amber-100 text-amber-900 border border-amber-200'
                         }`}
                       >
-                        {bk.status === 'cancelled'
-                          ? 'cancelled'
-                          : hasAdminConfirmedPlan
-                          ? 'Admin confirmed'
-                          : 'Awaiting admin confirmation'}
+                        {bk.status === 'pending'
+                          ? 'Awaiting admin approval'
+                          : bk.status === 'rejected'
+                            ? 'Rejected'
+                            : bk.status === 'cancelled'
+                              ? 'Cancelled'
+                              : hasAdminConfirmedPlan
+                                ? 'Approved · pass ready'
+                                : 'Approved · pass setup pending'}
                       </span>
                     </div>
 
@@ -567,9 +576,14 @@ export const AmenityBookingSection: React.FC = () => {
                         </span>
                       </div>
                     </div>
+                    {bk.status === 'pending' && (
+                      <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] font-semibold text-amber-900">
+                        Your request is reserved and waiting for the society administrator to approve it. The pass will become available after approval and event security setup.
+                      </p>
+                    )}
                     {!hasAdminConfirmedPlan && bk.status === 'confirmed' && (
                       <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] font-semibold text-amber-900">
-                        Pass download unlocks after the administrator confirms the entrance, parking, and guard assignment.
+                        Your booking is approved. Pass download unlocks after the administrator confirms the entrance, parking, and guard assignment.
                       </p>
                     )}
                   </div>
@@ -584,7 +598,7 @@ export const AmenityBookingSection: React.FC = () => {
                       <span>Download PDF Pass</span>
                     </button>
 
-                    {bk.status === 'confirmed' && (
+                    {(bk.status === 'pending' || bk.status === 'confirmed') && (
                       <button
                         onClick={() => {
                           if (confirm(`Cancel booking for ${bk.amenityName} on ${bk.date}?`)) {
@@ -767,8 +781,8 @@ export const AmenityBookingSection: React.FC = () => {
             </div>
 
             <div>
-              <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">
-                Booking Reserved
+              <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+                Approval Requested
               </span>
               <h3 className="text-xl font-black text-slate-900 mt-1">{viewPassBooking.amenityName}</h3>
               <p className="text-xs text-slate-500 mt-0.5">Facility booking for Flat {viewPassBooking.flatNumber}</p>
@@ -794,7 +808,11 @@ export const AmenityBookingSection: React.FC = () => {
                   plan.entryGate &&
                   plan.parkingArea
               );
-              return isPlanConfirmed ? (
+              return viewPassBooking.status === 'pending' ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                  Your request has been sent to the administrator. This time slot is reserved while approval is pending.
+                </p>
+              ) : isPlanConfirmed ? (
                 <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">
                   The administrator confirmed the event plan. Your facility pass is ready to download.
                 </p>
@@ -821,7 +839,7 @@ export const AmenityBookingSection: React.FC = () => {
                     plan.assignedGuardIds?.length &&
                     plan.entryGate &&
                     plan.parkingArea
-                )}
+                ) || viewPassBooking.status !== 'confirmed'}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-emerald-600"
               >
                 <Download className="w-4 h-4" />
