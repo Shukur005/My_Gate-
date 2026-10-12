@@ -330,8 +330,12 @@ interface SocietyContextType {
     message: string;
     booking?: AmenityBooking;
   };
-  approveAmenityBooking: (bookingId: string) => { success: boolean; message: string };
-  rejectAmenityBooking: (bookingId: string) => { success: boolean; message: string };
+  approveAmenityBooking: (
+    bookingId: string,
+    securityPlan?: Pick<GuardEventSecurityPlan, 'eventId' | 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'> &
+      Partial<Pick<GuardEventSecurityPlan, 'assignedGuardCount' | 'assignedGuardIds' | 'assignedGuardNames' | 'entryGate' | 'parkingArea'>>
+  ) => { success: boolean; message: string };
+  rejectAmenityBooking: (bookingId: string, reasonCategory: string, reason: string) => { success: boolean; message: string };
   cancelBooking: (bookingId: string) => void;
 
   submitComplaint: (data: Omit<ComplaintTicket, 'id' | 'createdAt' | 'status' | 'flatNumber' | 'residentName'>) => void;
@@ -1749,7 +1753,11 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   };
 
-  const approveAmenityBooking = (bookingId: string): { success: boolean; message: string } => {
+  const approveAmenityBooking = (
+    bookingId: string,
+    securityPlan?: Pick<GuardEventSecurityPlan, 'eventId' | 'guestProtocol' | 'parkingPlan' | 'guardNotes' | 'status'> &
+      Partial<Pick<GuardEventSecurityPlan, 'assignedGuardCount' | 'assignedGuardIds' | 'assignedGuardNames' | 'entryGate' | 'parkingArea'>>
+  ): { success: boolean; message: string } => {
     if (role !== 'admin' || currentUser?.role !== 'admin') {
       return { success: false, message: 'Only a signed-in society administrator can approve amenity bookings.' };
     }
@@ -1767,23 +1775,71 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (confirmedConflict) {
       return { success: false, message: 'This time slot has already been confirmed for another booking.' };
     }
+    let updatedSecurityPlan: GuardEventSecurityPlan | undefined;
+    if (securityPlan) {
+      if (
+        securityPlan.eventId !== `booking:${bookingId}` ||
+        !securityPlan.guestProtocol.trim() ||
+        !securityPlan.parkingPlan.trim() ||
+        !securityPlan.entryGate?.trim() ||
+        !securityPlan.parkingArea?.trim()
+      ) {
+        return { success: false, message: 'Select the event entrance and parking area, and add guest-entry and parking instructions.' };
+      }
+      const assignedGuardIds = [...new Set(securityPlan.assignedGuardIds || [])];
+      const assignedGuards = users.filter((user) =>
+        assignedGuardIds.includes(user.id) && user.role === 'guard' && user.guardStatus !== 'inactive'
+      );
+      if (assignedGuards.length < 1) {
+        return { success: false, message: 'Assign at least one active guard before confirming the event.' };
+      }
+      updatedSecurityPlan = {
+        ...securityPlan,
+        guestProtocol: securityPlan.guestProtocol.trim(),
+        parkingPlan: securityPlan.parkingPlan.trim(),
+        guardNotes: securityPlan.guardNotes.trim(),
+        assignedGuardCount: assignedGuards.length,
+        assignedGuardIds: assignedGuards.map((guard) => guard.id),
+        assignedGuardNames: assignedGuards.map((guard) => guard.name),
+        entryGate: securityPlan.entryGate.trim(),
+        parkingArea: securityPlan.parkingArea.trim(),
+        updatedBy: currentUser.name,
+        updatedAt: new Date().toISOString(),
+      };
+    }
     setBookings((previous) => previous.map((item) =>
       item.id === bookingId ? { ...item, status: 'confirmed' } : item
     ));
-    return { success: true, message: `${booking.amenityName} booking for ${booking.residentName} approved.` };
+    if (updatedSecurityPlan) {
+      setGuardEventSecurityPlans((previous) => [
+        updatedSecurityPlan,
+        ...previous.filter((existing) => existing.eventId !== updatedSecurityPlan.eventId),
+      ]);
+    }
+    return {
+      success: true,
+      message: securityPlan
+        ? `${booking.amenityName} booking for ${booking.residentName} approved with its event security plan.`
+        : `${booking.amenityName} booking for ${booking.residentName} approved.`,
+    };
   };
 
-  const rejectAmenityBooking = (bookingId: string): { success: boolean; message: string } => {
+  const rejectAmenityBooking = (bookingId: string, reasonCategory: string, reason: string): { success: boolean; message: string } => {
     if (role !== 'admin' || currentUser?.role !== 'admin') {
       return { success: false, message: 'Only a signed-in society administrator can reject amenity bookings.' };
     }
     const booking = bookings.find((item) => item.id === bookingId && item.societyName === currentSocietyName);
     if (!booking) return { success: false, message: 'Amenity booking was not found for this society.' };
     if (booking.status !== 'pending') return { success: false, message: 'This booking request is no longer awaiting approval.' };
+    if (!reasonCategory.trim() || !reason.trim()) {
+      return { success: false, message: 'Select a rejection reason and provide an explanation for the resident.' };
+    }
     setBookings((previous) => previous.map((item) =>
-      item.id === bookingId ? { ...item, status: 'rejected' } : item
+      item.id === bookingId
+        ? { ...item, status: 'rejected', rejectionReasonCategory: reasonCategory.trim(), rejectionReason: reason.trim() }
+        : item
     ));
-    return { success: true, message: `${booking.amenityName} booking request for ${booking.residentName} was rejected.` };
+    return { success: true, message: `${booking.amenityName} booking request for ${booking.residentName} was rejected with a reason.` };
   };
 
   const cancelBooking = (bookingId: string) => {
