@@ -115,6 +115,10 @@ export const AdminView: React.FC = () => {
   });
   const [bankDetailsNotice, setBankDetailsNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [amenityBookingNotice, setAmenityBookingNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [rejectingBookingId, setRejectingBookingId] = useState<string | null>(null);
+  const [rejectionReasonCategory, setRejectionReasonCategory] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionFeedback, setRejectionFeedback] = useState('');
 
   useEffect(() => {
     const saved = selectedBankSociety?.bankDetails;
@@ -145,10 +149,26 @@ export const AdminView: React.FC = () => {
   };
 
   const handleAmenityBookingDecision = (bookingId: string, decision: 'approve' | 'reject') => {
-    const result = decision === 'approve'
-      ? approveAmenityBooking(bookingId)
-      : rejectAmenityBooking(bookingId);
-    setAmenityBookingNotice({ type: result.success ? 'success' : 'error', message: result.message });
+    if (decision === 'approve') {
+      openEventPlanEditor(`booking:${bookingId}`);
+      return;
+    }
+    setRejectingBookingId(bookingId);
+    setRejectionReasonCategory('');
+    setRejectionReason('');
+    setRejectionFeedback('');
+    setAmenityBookingNotice(null);
+  };
+
+  const handleRejectAmenityBooking = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!rejectingBookingId) return;
+    const result = rejectAmenityBooking(rejectingBookingId, rejectionReasonCategory, rejectionReason);
+    setRejectionFeedback(result.message);
+    if (result.success) {
+      setAmenityBookingNotice({ type: 'success', message: result.message });
+      setRejectingBookingId(null);
+    }
   };
 
   // Synchronize with left sidebar selection
@@ -347,7 +367,9 @@ export const AdminView: React.FC = () => {
         detail: notice.content,
       })),
     ...societyBookings
-      .filter((booking) => booking.status === 'confirmed' && booking.date >= todayDate)
+      .filter((booking) =>
+        (booking.status === 'confirmed' && booking.date >= todayDate) || booking.status === 'pending'
+      )
       .map((booking) => ({
         eventId: `booking:${booking.id}`,
         title: booking.amenityName,
@@ -441,7 +463,7 @@ export const AdminView: React.FC = () => {
     const assignedGuardNames = activeGuards
       .filter((guard) => eventAssignedGuardIds.includes(guard.id))
       .map((guard) => guard.name);
-    const result = saveGuardEventSecurityPlan({
+    const plan = {
       eventId: editingSecurityEventId,
       assignedGuardCount: assignedGuardNames.length,
       assignedGuardIds: eventAssignedGuardIds,
@@ -452,9 +474,20 @@ export const AdminView: React.FC = () => {
       parkingPlan: eventParkingPlan,
       guardNotes: eventGuardNotes,
       status: 'ready',
-    });
+    } as const;
+    const pendingBooking = editingSecurityEventId.startsWith('booking:')
+      ? societyBookings.find((booking) =>
+        `booking:${booking.id}` === editingSecurityEventId && booking.status === 'pending'
+      )
+      : undefined;
+    const result = pendingBooking
+      ? approveAmenityBooking(pendingBooking.id, plan)
+      : saveGuardEventSecurityPlan(plan);
     setEventPlanFeedback(result.message);
-    if (result.success) setEditingSecurityEventId(null);
+    if (result.success) {
+      if (pendingBooking) setAmenityBookingNotice({ type: 'success', message: result.message });
+      setEditingSecurityEventId(null);
+    }
   };
 
   const handleAddAmenityGroup = (e: React.FormEvent) => {
@@ -1724,7 +1757,7 @@ export const AdminView: React.FC = () => {
                   );
                 })}
                 {eventSecurityItems.length === 0 && (
-                  <p className="py-5 text-sm text-slate-500">Publish an Event notice or create a confirmed amenity booking to configure event security.</p>
+                  <p className="py-5 text-sm text-slate-500">Publish an Event notice or submit an amenity booking to configure event security.</p>
                 )}
               </div>
             </section>
@@ -1738,23 +1771,98 @@ export const AdminView: React.FC = () => {
         )}
       </div>
 
+      {rejectingBookingId && (() => {
+        const booking = pendingAmenityBookings.find((item) => item.id === rejectingBookingId);
+        if (!booking) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+            <section role="dialog" aria-modal="true" aria-labelledby="reject-booking-title" className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <header className="flex items-center justify-between bg-slate-900 p-5 text-white">
+                <div>
+                  <h3 id="reject-booking-title" className="font-bold">Decline Amenity Booking</h3>
+                  <p className="mt-1 text-xs text-slate-300">
+                    {booking.amenityName} · {booking.date} · {booking.residentName} · Flat {booking.flatNumber} · {booking.guestsCount} guest{booking.guestsCount === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <button type="button" aria-label="Close rejection form" onClick={() => setRejectingBookingId(null)} className="text-slate-300 hover:text-white">
+                  <X className="h-5 w-5" />
+                </button>
+              </header>
+              <form onSubmit={handleRejectAmenityBooking} className="grid grid-cols-1 gap-5 p-5 md:grid-cols-2">
+                <div>
+                  <label htmlFor="amenity-rejection-category" className="mb-1 block text-xs font-bold text-slate-700">Reason for declining *</label>
+                  <select
+                    id="amenity-rejection-category"
+                    required
+                    value={rejectionReasonCategory}
+                    onChange={(event) => setRejectionReasonCategory(event.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"
+                  >
+                    <option value="">Select a reason</option>
+                    <option value="Scheduled maintenance">Facility is unavailable due to scheduled maintenance</option>
+                    <option value="Guest capacity">Requested guest count exceeds the facility limit</option>
+                    <option value="Facility or time suitability">The event is not suitable for this facility or time slot</option>
+                    <option value="Safety or security">Safety or security requirements cannot be met</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                    Choose the main reason so the resident can understand the decision.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="amenity-rejection-explanation" className="mb-1 block text-xs font-bold text-slate-700">Explanation for the resident *</label>
+                  <textarea
+                    id="amenity-rejection-explanation"
+                    required
+                    minLength={10}
+                    maxLength={500}
+                    rows={5}
+                    value={rejectionReason}
+                    onChange={(event) => setRejectionReason(event.target.value)}
+                    placeholder="Explain why this request cannot be approved. Include any relevant dates, capacity limits, or alternatives where possible."
+                    className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"
+                  />
+                  <p className="mt-1 text-right text-[11px] text-slate-500">{rejectionReason.length}/500</p>
+                </div>
+                {rejectionFeedback && (
+                  <p role="alert" className="text-xs font-semibold text-rose-700 md:col-span-2">{rejectionFeedback}</p>
+                )}
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 md:col-span-2">
+                  <button type="button" onClick={() => setRejectingBookingId(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600">
+                    Cancel
+                  </button>
+                  <button type="submit" className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2">
+                    Decline Booking & Save Reason
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        );
+      })()}
+
       {editingSecurityEventId && (() => {
         const eventItem = eventSecurityItems.find((item) => item.eventId === editingSecurityEventId);
         if (!eventItem) return null;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-            <section role="dialog" aria-modal="true" aria-labelledby="event-plan-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <section role="dialog" aria-modal="true" aria-labelledby="event-plan-title" className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
               <header className="flex items-center justify-between bg-slate-900 p-4 text-white">
                 <div>
-                  <h3 id="event-plan-title" className="font-bold">Event Security Plan</h3>
+                  <h3 id="event-plan-title" className="font-bold">
+                    {editingSecurityEventId.startsWith('booking:') &&
+                    societyBookings.some((booking) => `booking:${booking.id}` === editingSecurityEventId && booking.status === 'pending')
+                      ? 'Approve Booking & Assign Event Security'
+                      : 'Event Security Plan'}
+                  </h3>
                   <p className="mt-1 text-xs text-slate-300">{eventItem.title} · {eventItem.date} · {eventItem.detail}</p>
                 </div>
                 <button type="button" aria-label="Close event security plan" onClick={() => setEditingSecurityEventId(null)} className="text-slate-300 hover:text-white">
                   <X className="h-5 w-5" />
                 </button>
               </header>
-              <form onSubmit={handleSaveEventPlan} className="space-y-4 p-5">
-                <div>
+              <form onSubmit={handleSaveEventPlan} className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+                <div className="md:col-span-2">
                   <p className="mb-2 block text-xs font-bold text-slate-700">Select active guards assigned to this event *</p>
                   {activeGuards.length > 0 ? (
                     <div className="grid gap-2 sm:grid-cols-2">
@@ -1775,21 +1883,19 @@ export const AdminView: React.FC = () => {
                     <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">No active guard profiles are available. Add/activate guards before confirming this event.</p>
                   )}
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="event-entry-gate" className="mb-1 block text-xs font-bold text-slate-700">Approved entrance *</label>
-                    <select id="event-entry-gate" required value={eventEntryGate} onChange={(event) => setEventEntryGate(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm">
-                      <option value="">Select entrance</option>
-                      {['Main Gate 1', 'Service Gate 2', 'Tower B Gate'].map((gate) => <option key={gate} value={gate}>{gate}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="event-parking-area" className="mb-1 block text-xs font-bold text-slate-700">Approved parking area *</label>
-                    <select id="event-parking-area" required value={eventParkingArea} onChange={(event) => setEventParkingArea(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm">
-                      <option value="">Select parking area</option>
-                      {['Visitor Parking Bays', 'Basement Visitor Parking', 'Clubhouse Drop-off Zone', 'Tower A Visitor Bays', 'Tower B Visitor Bays', 'Custom / See parking protocol'].map((area) => <option key={area} value={area}>{area}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label htmlFor="event-entry-gate" className="mb-1 block text-xs font-bold text-slate-700">Approved entrance *</label>
+                  <select id="event-entry-gate" required value={eventEntryGate} onChange={(event) => setEventEntryGate(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm">
+                    <option value="">Select entrance</option>
+                    {['Main Gate 1', 'Service Gate 2', 'Tower B Gate'].map((gate) => <option key={gate} value={gate}>{gate}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="event-parking-area" className="mb-1 block text-xs font-bold text-slate-700">Approved parking area *</label>
+                  <select id="event-parking-area" required value={eventParkingArea} onChange={(event) => setEventParkingArea(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm">
+                    <option value="">Select parking area</option>
+                    {['Visitor Parking Bays', 'Basement Visitor Parking', 'Clubhouse Drop-off Zone', 'Tower A Visitor Bays', 'Tower B Visitor Bays', 'Custom / See parking protocol'].map((area) => <option key={area} value={area}>{area}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label htmlFor="event-entry-protocol" className="mb-1 block text-xs font-bold text-slate-700">Guest entry protocol *</label>
@@ -1799,14 +1905,19 @@ export const AdminView: React.FC = () => {
                   <label htmlFor="event-parking-plan" className="mb-1 block text-xs font-bold text-slate-700">Parking protocol *</label>
                   <textarea id="event-parking-plan" rows={3} required maxLength={800} value={eventParkingPlan} onChange={(event) => setEventParkingPlan(event.target.value)} placeholder="Visitor parking location, traffic flow, and areas to keep clear." className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm" />
                 </div>
-                <div>
+                <div className="md:col-span-2">
                   <label htmlFor="event-guard-notes" className="mb-1 block text-xs font-bold text-slate-700">Additional guard instructions</label>
                   <textarea id="event-guard-notes" rows={2} maxLength={500} value={eventGuardNotes} onChange={(event) => setEventGuardNotes(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm" />
                 </div>
-                {eventPlanFeedback && <p role="alert" className="text-xs font-semibold text-rose-700">{eventPlanFeedback}</p>}
-                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                {eventPlanFeedback && <p role="alert" className="text-xs font-semibold text-rose-700 md:col-span-2">{eventPlanFeedback}</p>}
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 md:col-span-2">
                   <button type="button" onClick={() => setEditingSecurityEventId(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600">Cancel</button>
-                  <button type="submit" disabled={!activeGuards.length} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">Admin Final Confirmation</button>
+                  <button type="submit" disabled={!activeGuards.length} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                    {editingSecurityEventId.startsWith('booking:') &&
+                    societyBookings.some((booking) => `booking:${booking.id}` === editingSecurityEventId && booking.status === 'pending')
+                      ? 'Approve & Confirm Booking'
+                      : 'Admin Final Confirmation'}
+                  </button>
                 </div>
               </form>
             </section>

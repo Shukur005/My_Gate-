@@ -154,6 +154,8 @@ export interface AmenityBooking {
   amountPaid: number;
   status: 'pending' | 'confirmed' | 'cancelled' | 'rejected';
   bookingDate: string;
+  rejectionReasonCategory?: string;
+  rejectionReason?: string;
 }
 
 export interface GuardEventSecurityPlan {

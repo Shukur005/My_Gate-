@@ -581,6 +581,12 @@ export const AmenityBookingSection: React.FC = () => {
                         Your request is reserved and waiting for the society administrator to approve it. The pass will become available after approval and event security setup.
                       </p>
                     )}
+                    {bk.status === 'rejected' && (bk.rejectionReasonCategory || bk.rejectionReason) && (
+                      <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-900">
+                        <p className="font-bold">Reason for rejection{bk.rejectionReasonCategory ? ` · ${bk.rejectionReasonCategory}` : ''}</p>
+                        {bk.rejectionReason && <p className="mt-1 leading-relaxed">{bk.rejectionReason}</p>}
+                      </div>
+                    )}
                     {!hasAdminConfirmedPlan && bk.status === 'confirmed' && (
                       <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] font-semibold text-amber-900">
                         Your booking is approved. Pass download unlocks after the administrator confirms the entrance, parking, and guard assignment.
