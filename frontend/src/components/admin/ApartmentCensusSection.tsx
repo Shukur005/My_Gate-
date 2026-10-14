@@ -19,9 +19,10 @@ import {
   UserRound,
   Users,
   X,
+  Info,
 } from 'lucide-react';
 import { useSociety } from '../../context/SocietyContext';
-import { FlatDetail } from '../../types';
+import { BillPaymentMethod, FlatDetail } from '../../types';
 import { AddApartmentModal } from './AddApartmentModal';
 import { AddVacantFlatModal } from './AddVacantFlatModal';
 import { AddMemberFlatModal } from './AddMemberFlatModal';
@@ -56,7 +57,7 @@ const profileTenure = (value?: string) => {
 };
 
 export const ApartmentCensusSection: React.FC = () => {
-  const { flats, societies, bills, visitors, currentSocietyName, activeSidebarNav, markFlatVacant, updateApartmentAddress } = useSociety();
+  const { flats, societies, bills, visitors, currentSocietyName, activeSidebarNav, payDuesAndMarkFlatVacant, updateApartmentAddress } = useSociety();
   const isPeopleHub = activeSidebarNav === 'community';
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<OccupancyFilter>('all');
@@ -68,6 +69,8 @@ export const ApartmentCensusSection: React.FC = () => {
   const [showAddFlat, setShowAddFlat] = useState(false);
   const [showAssignResident, setShowAssignResident] = useState(false);
   const [showSocietySummary, setShowSocietySummary] = useState(false);
+  const [showVacancyPayment, setShowVacancyPayment] = useState(false);
+  const [vacancyPaymentMethod, setVacancyPaymentMethod] = useState<BillPaymentMethod>('UPI');
 
   const currentSocietyFlats = flats.filter((flat) => flat.societyName === currentSocietyName);
   const occupiedFlats = currentSocietyFlats.filter((flat) => flat.occupancyStatus !== 'Vacant');
@@ -130,12 +133,20 @@ export const ApartmentCensusSection: React.FC = () => {
     .sort((a, b) => a.wing.localeCompare(b.wing) || a.floor - b.floor || a.flatNumber.localeCompare(b.flatNumber));
 
   const handleMarkVacant = (flat: FlatDetail) => {
-    const confirmed = window.confirm(
-      `Mark apartment ${flat.flatNumber} as vacant? Its resident and household details will be removed from this apartment.`
-    );
-    if (!confirmed) return;
-    const result = markFlatVacant(flat.flatNumber, flat.societyName);
-    if (!result.success) window.alert(result.message);
+    setSelectedFlat(flat);
+    setVacancyPaymentMethod('UPI');
+    setShowVacancyPayment(true);
+  };
+
+  const handleVacancyPaymentSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedFlat) return;
+    const result = payDuesAndMarkFlatVacant(selectedFlat.flatNumber, selectedFlat.societyName, vacancyPaymentMethod);
+    if (!result.success) {
+      window.alert(result.message);
+      return;
+    }
+    setShowVacancyPayment(false);
     setSelectedFlat(null);
   };
 
@@ -163,6 +174,13 @@ export const ApartmentCensusSection: React.FC = () => {
         bill.societyName === selectedFlat.societyName
       ).sort((first, second) => (second.paidDate || second.dueDate).localeCompare(first.paidDate || first.dueDate))
     : [];
+  const outstandingBills = residentBills.filter((bill) => bill.status !== 'paid');
+  const totalVacancyDues = selectedFlat
+    ? Math.max(
+        selectedFlat.outstandingDues,
+        outstandingBills.reduce((total, bill) => total + bill.totalAmount, 0)
+      )
+    : 0;
   const residentVisitors = selectedFlat
     ? visitors.filter((visitor) =>
         visitor.flatNumber === selectedFlat.flatNumber &&
@@ -838,6 +856,68 @@ export const ApartmentCensusSection: React.FC = () => {
       <AddVacantFlatModal isOpen={showAddFlat} onClose={() => setShowAddFlat(false)} />
       {showAssignResident && (
         <AddMemberFlatModal isOpen={showAssignResident} onClose={() => setShowAssignResident(false)} />
+      )}
+      {showVacancyPayment && selectedFlat && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <section aria-labelledby="vacancy-payment-title" aria-modal="true" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog">
+            <header className="flex items-center justify-between bg-slate-900 px-5 py-4 text-white">
+              <div className="flex items-center gap-3">
+                <span className="rounded-xl bg-emerald-500/15 p-2.5 text-emerald-300"><CreditCard className="h-5 w-5" /></span>
+                <div>
+                  <h2 className="text-base font-bold" id="vacancy-payment-title">Clear dues before vacancy</h2>
+                  <p className="mt-0.5 text-xs text-slate-300">Flat {selectedFlat.flatNumber} · {selectedFlat.ownerName}</p>
+                </div>
+              </div>
+              <button aria-label="Close payment form" className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 hover:text-white" onClick={() => setShowVacancyPayment(false)} type="button"><X className="h-5 w-5" /></button>
+            </header>
+            <form className="space-y-5 p-5" onSubmit={handleVacancyPaymentSubmit}>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-xs font-semibold text-amber-900">Total outstanding dues</p>
+                <p className="mt-1 text-3xl font-extrabold tabular-nums text-amber-900">₹{totalVacancyDues.toLocaleString('en-IN')}</p>
+                {outstandingBills.length > 0 && (
+                  <ul className="mt-3 space-y-1.5 border-t border-amber-200 pt-3">
+                    {outstandingBills.map((bill) => (
+                      <li className="flex justify-between gap-3 text-xs text-amber-900" key={bill.id}>
+                        <span>{bill.monthYear} · {bill.status === 'overdue' ? 'Overdue' : 'Pending'}</span>
+                        <span className="font-semibold">₹{bill.totalAmount.toLocaleString('en-IN')}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {totalVacancyDues > 0 ? (
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-slate-700" htmlFor="vacancy-payment-method">Payment method *</label>
+                  <select
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    id="vacancy-payment-method"
+                    onChange={(event) => setVacancyPaymentMethod(event.target.value as BillPaymentMethod)}
+                    required
+                    value={vacancyPaymentMethod}
+                  >
+                    {(['UPI', 'Card', 'NetBanking', 'PhonePe', 'Google Pay', 'BHIM', 'Super Money'] as BillPaymentMethod[]).map((method) => (
+                      <option key={method} value={method}>{method === 'NetBanking' ? 'Net Banking' : method}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
+                  <Info className="mr-1 inline h-4 w-4 align-text-bottom" />
+                  This apartment has no outstanding dues or unpaid invoices.
+                </p>
+              )}
+              <p className="text-[11px] leading-5 text-slate-500">
+                Once payment is recorded, outstanding invoices will be marked paid and the apartment will be marked vacant. This prototype records the payment method but does not verify a bank transaction.
+              </p>
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                <button className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50" onClick={() => setShowVacancyPayment(false)} type="button">Cancel</button>
+                <button className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800" type="submit">
+                  {totalVacancyDues > 0 ? `Record Payment & Mark Vacant` : 'Mark Vacant'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
     </section>
   );

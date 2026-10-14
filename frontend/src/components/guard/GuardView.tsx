@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import { useSociety } from '../../context/SocietyContext';
-import { VisitorCategory, VisitorPass } from '../../types';
+import { ResidentVehicleMovement, VisitorCategory, VisitorPass } from '../../types';
 import { ShiftSummaryModal } from './ShiftSummaryModal';
 import { QRScannerModal } from './QRScannerModal';
 import { DigitalShiftLogSection } from './DigitalShiftLogSection';
@@ -9,6 +9,7 @@ import { LogIncidentModal } from './LogIncidentModal';
 import { ShiftHandoverModal } from './ShiftHandoverModal';
 import { GuardHelpDeskSection } from './GuardHelpDeskSection';
 import { GuardEventOperationsSection } from './GuardEventOperationsSection';
+import { ResidentVehicleGateLog } from './ResidentVehicleGateLog';
 import {
   Shield,
   ShieldAlert,
@@ -57,6 +58,9 @@ export const GuardView: React.FC = () => {
     visitors,
     domesticWorkerPasses,
     flats,
+    currentSocietyName,
+    residentVehicleMovements,
+    recordResidentVehicleMovement,
     verifyAndCheckInVisitor,
     verifyDomesticWorkerPass,
     recordDomesticWorkerGateAction,
@@ -130,9 +134,11 @@ export const GuardView: React.FC = () => {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [entryGate, setEntryGate] = useState('Main Gate 1');
   const [quickCheckInSuccess, setQuickCheckInSuccess] = useState<string | null>(null);
+  const [selectedResidentVehicleKey, setSelectedResidentVehicleKey] = useState('');
+  const [vehicleMovementNotice, setVehicleMovementNotice] = useState<{ success: boolean; message: string } | null>(null);
 
   // Real-Time Visitor Log Search & Filter
-  const [logStatusFilter, setLogStatusFilter] = useState<'all' | 'in_gate' | 'pending_approval' | 'denied' | 'checked_out'>('all');
+  const [logStatusFilter, setLogStatusFilter] = useState<'all' | 'in_gate' | 'pending_approval' | 'denied' | 'checked_out' | 'resident_vehicles'>('all');
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [statusUpdateToast, setStatusUpdateToast] = useState<string | null>(null);
 
@@ -151,6 +157,30 @@ export const GuardView: React.FC = () => {
   const gateDropRequests = visitors.filter(
     (v) => v.deliveryInstruction === 'leave_at_gate' && v.status === 'in_gate'
   );
+  const getResidentVehicleKey = (flatNumber: string, number: string) =>
+    `${flatNumber.trim().toUpperCase()}|${number.replace(/\s/g, '').toUpperCase()}`;
+  const registeredResidentVehicles = flats
+    .filter((flat) => (flat.societyName || currentSocietyName) === currentSocietyName && flat.occupancyStatus !== 'Vacant')
+    .flatMap((flat) => flat.vehicles.map((vehicle) => ({
+      key: getResidentVehicleKey(flat.flatNumber, vehicle.number),
+      flatNumber: flat.flatNumber,
+      residentName: flat.ownerName,
+      vehicle,
+    })));
+  const selectedResidentVehicle = registeredResidentVehicles.find((item) => item.key === selectedResidentVehicleKey);
+  const societyVehicleMovements = residentVehicleMovements
+    .filter((movement) => movement.societyName === currentSocietyName)
+    .sort((first, second) => second.recordedAt.localeCompare(first.recordedAt));
+  const latestMovementByVehicle = new Map<string, ResidentVehicleMovement>();
+  societyVehicleMovements.forEach((movement) => {
+    const key = getResidentVehicleKey(movement.flatNumber, movement.vehicleNumber);
+    if (!latestMovementByVehicle.has(key)) latestMovementByVehicle.set(key, movement);
+  });
+  const selectedVehicleLastMovement = selectedResidentVehicle
+    ? societyVehicleMovements.find((movement) =>
+        getResidentVehicleKey(movement.flatNumber, movement.vehicleNumber) === selectedResidentVehicle.key
+      )
+    : undefined;
   const flatsByBlock = flats.reduce<Record<string, typeof flats>>((blocks, flat) => {
     const blockName = flat.wing.trim() || 'Unassigned block';
     (blocks[blockName] ||= []).push(flat);
@@ -209,7 +239,7 @@ export const GuardView: React.FC = () => {
 
   // Real-Time Visitor Log filtering
   const filteredVisitorLogs = visitors.filter((v) => {
-    const matchesStatus = logStatusFilter === 'all' || v.status === logStatusFilter;
+    const matchesStatus = logStatusFilter === 'all' || (logStatusFilter !== 'resident_vehicles' && v.status === logStatusFilter);
     const matchesQuery =
       v.visitorName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
       v.flatNumber.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
@@ -249,6 +279,22 @@ export const GuardView: React.FC = () => {
     window.setTimeout(() => setStatusUpdateToast(null), 4000);
   };
 
+  const handleResidentVehicleMovement = (direction: 'entry' | 'exit', vehicleKey = selectedResidentVehicleKey) => {
+    const vehicleToRecord = registeredResidentVehicles.find((item) => item.key === vehicleKey);
+    if (!vehicleToRecord) {
+      setVehicleMovementNotice({ success: false, message: 'Select a registered resident vehicle first.' });
+      return;
+    }
+    const result = recordResidentVehicleMovement({
+      flatNumber: vehicleToRecord.flatNumber,
+      vehicleNumber: vehicleToRecord.vehicle.number,
+      direction,
+      gateStation: activeShift?.gateStation || entryGate,
+    });
+    setVehicleMovementNotice(result);
+    if (result.success && direction === 'entry') setSelectedResidentVehicleKey('');
+  };
+
   const handleQuickCheckInSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!visitorName.trim()) return;
@@ -272,6 +318,11 @@ export const GuardView: React.FC = () => {
   };
 
   const handleToggleApproval = (v: VisitorPass) => {
+    if (v.status === 'checked_out') {
+      setStatusUpdateToast(`${v.visitorName} has already checked out. This visit cannot be reopened.`);
+      setTimeout(() => setStatusUpdateToast(null), 4000);
+      return;
+    }
     const newStatus = v.status === 'in_gate' ? 'denied' : 'in_gate';
     updateVisitorStatus(v.id, newStatus);
     setStatusUpdateToast(
@@ -1596,6 +1647,7 @@ export const GuardView: React.FC = () => {
                 { id: 'pending_approval', label: 'Pending Approval' },
                 { id: 'denied', label: 'Denied / Blocked' },
                 { id: 'checked_out', label: 'Checked Out' },
+                { id: 'resident_vehicles', label: 'Resident Vehicles' },
               ] as const
             ).map((st) => (
               <button
@@ -1613,20 +1665,37 @@ export const GuardView: React.FC = () => {
           </div>
 
           {/* Search Input */}
-          <div className="relative w-full lg:w-72">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search Visitor, Apartment, Phone..."
-              value={logSearchQuery}
-              onChange={(e) => setLogSearchQuery(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 transition-all"
-            />
-          </div>
+          {logStatusFilter !== 'resident_vehicles' && (
+            <div className="relative w-full lg:w-72">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search Visitor, Apartment, Phone..."
+                value={logSearchQuery}
+                onChange={(e) => setLogSearchQuery(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 transition-all"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Visitor Logs Table */}
-        {filteredVisitorLogs.length === 0 ? (
+        {logStatusFilter === 'resident_vehicles' ? (
+          <ResidentVehicleGateLog
+            vehicles={registeredResidentVehicles}
+            movements={societyVehicleMovements}
+            latestMovementByVehicle={latestMovementByVehicle}
+            selectedVehicleKey={selectedResidentVehicleKey}
+            selectedVehicle={selectedResidentVehicle}
+            selectedVehicleLastMovement={selectedVehicleLastMovement}
+            notice={vehicleMovementNotice}
+            onSelectVehicle={(key) => {
+              setSelectedResidentVehicleKey(key);
+              setVehicleMovementNotice(null);
+            }}
+            onRecordMovement={handleResidentVehicleMovement}
+            vehicleKey={getResidentVehicleKey}
+          />
+        ) : filteredVisitorLogs.length === 0 ? (
           <div className="text-center py-10 text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 space-y-2">
             <UserX className="w-10 h-10 mx-auto text-slate-300" />
             <p className="text-xs font-semibold">No visitor entry logs match your search filters.</p>
@@ -1648,6 +1717,7 @@ export const GuardView: React.FC = () => {
                 {filteredVisitorLogs.map((v) => {
                   const isApproved = v.status === 'in_gate';
                   const isDenied = v.status === 'denied';
+                  const isCheckedOut = v.status === 'checked_out';
 
                   return (
                     <tr key={v.id} className="hover:bg-slate-50/80 transition-colors">
@@ -1729,11 +1799,16 @@ export const GuardView: React.FC = () => {
                             {/* Interactive Toggle Switch */}
                             <button
                               type="button"
+                              disabled={isCheckedOut}
                               onClick={() => handleToggleApproval(v)}
-                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                isApproved ? 'bg-slate-900' : 'bg-slate-300 hover:bg-slate-400'
+                              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                                !isCheckedOut && 'cursor-pointer'
+                              } ${
+                                isApproved ? 'bg-slate-900' : isCheckedOut ? 'bg-slate-300' : 'bg-slate-300 hover:bg-slate-400'
                               }`}
-                              title={isApproved ? 'Click to Deny Entry' : 'Click to Grant Entry Approval'}
+                              title={isCheckedOut ? 'This visit is complete and cannot be reopened' : isApproved ? 'Click to Deny Entry' : 'Click to Grant Entry Approval'}
+                              aria-label={isCheckedOut ? `Entry locked because ${v.visitorName} has checked out` : isApproved ? `Deny entry for ${v.visitorName}` : `Grant entry to ${v.visitorName}`}
+                              aria-pressed={isApproved}
                             >
                               <span
                                 className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
@@ -1766,7 +1841,7 @@ export const GuardView: React.FC = () => {
                           </div>
 
                           <span className="text-[9px] text-slate-400 font-semibold">
-                            {isApproved ? 'Toggle OFF to Deny' : 'Toggle ON to Grant Entry'}
+                            {isCheckedOut ? `Visit complete${v.checkOutTime ? ` · ${v.checkOutTime}` : ''}` : isApproved ? 'Toggle OFF to Deny' : 'Toggle ON to Grant Entry'}
                           </span>
                         </div>
                       </td>
@@ -1787,13 +1862,20 @@ export const GuardView: React.FC = () => {
                               <span>Check-Out</span>
                             </button>
                           ) : (
-                            <button
-                              onClick={() => handleToggleApproval(v)}
-                              className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1 transition-all"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-slate-600" />
-                              <span>Grant Entry</span>
-                            </button>
+                            isCheckedOut ? (
+                              <span className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-500" aria-label="Visit complete, entry cannot be granted again">
+                                <LogOut className="h-3.5 w-3.5" />
+                                <span>Checked Out</span>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleApproval(v)}
+                                className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1 transition-all"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 text-slate-600" />
+                                <span>Grant Entry</span>
+                              </button>
+                            )
                           )}
                         </div>
                       </td>

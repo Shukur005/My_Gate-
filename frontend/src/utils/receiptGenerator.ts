@@ -23,7 +23,9 @@ export function downloadBillReceipt(bill: MaintenanceBill, txnOverride?: string)
     ['Monthly Society Maintenance', bill.baseMaintenance],
     ['Water Charges', bill.waterCharges],
     ['Allocated Parking Charges', bill.parkingCharges],
-    ...(bill.clubhouseFee ? [['Clubhouse & Amenities Charges', bill.clubhouseFee] as [string, number]] : []),
+    ...(bill.otherCharges !== undefined
+      ? bill.otherCharges ? [['Other Charges', bill.otherCharges] as [string, number]] : []
+      : bill.clubhouseFee ? [['Clubhouse & Amenities Charges', bill.clubhouseFee] as [string, number]] : []),
     ...(bill.lateFee > 0 ? [['Late Fee', bill.lateFee] as [string, number]] : []),
   ];
 
@@ -108,6 +110,8 @@ export function downloadBillReceipt(bill: MaintenanceBill, txnOverride?: string)
           <div><span class="label">Document No.</span><span>:</span><span class="value">${escapeHtml(receiptTxn)}</span></div>
           <div><span class="label">Flat Unit</span><span>:</span><span class="value">${escapeHtml(bill.flatNumber)}</span></div>
           <div><span class="label">Invoice Period</span><span>:</span><span class="value">${escapeHtml(bill.monthYear)}</span></div>
+          ${bill.invoiceType ? `<div><span class="label">Invoice Type</span><span>:</span><span class="value">${escapeHtml(bill.invoiceType)}</span></div>` : ''}
+          ${bill.invoiceDate ? `<div><span class="label">Invoice Date</span><span>:</span><span class="value">${escapeHtml(bill.invoiceDate)}</span></div>` : ''}
           <div><span class="label">Due Date</span><span>:</span><span class="value">${escapeHtml(bill.dueDate)}</span></div>
           <div><span class="label">Payment Status</span><span>:</span><span class="value">${isPaid ? `Paid${bill.paymentMethod ? ` via ${escapeHtml(bill.paymentMethod)}` : ''}` : bill.status === 'overdue' ? 'Overdue' : 'Pending'}</span></div>
         </div>
@@ -126,6 +130,7 @@ export function downloadBillReceipt(bill: MaintenanceBill, txnOverride?: string)
         </table>
 
         <div class="grand-total"><span>Grand Total</span><span>${formatAmount(bill.totalAmount)}</span></div>
+        ${bill.notes ? `<p class="payment-note">Additional information: ${escapeHtml(bill.notes)}</p>` : ''}
         ${isPaid ? '<p class="payment-note">Payment received and recorded.</p>' : ''}
         <footer class="footer">
           This is a computer-generated ${isPaid ? 'payment receipt' : 'maintenance invoice'} for Green Valley Residency.<br>

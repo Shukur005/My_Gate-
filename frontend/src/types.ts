@@ -98,11 +98,15 @@ export interface MaintenanceBill {
   flatNumber: string;
   ownerName: string;
   monthYear: string; // e.g. "August 2026"
+  invoiceDate?: string;
+  invoiceType?: string;
+  notes?: string;
   dueDate: string;
   baseMaintenance: number;
   waterCharges: number;
   parkingCharges: number;
   clubhouseFee: number;
+  otherCharges?: number;
   lateFee: number;
   totalAmount: number;
   status: 'paid' | 'pending' | 'overdue';
@@ -286,6 +290,21 @@ export interface FlatDetail {
   outstandingDues: number;
   emergencyContacts?: EmergencyContact[];
   profileDetails?: FlatProfileDetails;
+}
+
+export interface ResidentVehicleMovement {
+  id: string;
+  societyName: string;
+  flatNumber: string;
+  residentName: string;
+  vehicleType: 'Car' | 'Bike';
+  vehicleNumber: string;
+  makeModel?: string;
+  color?: string;
+  direction: 'entry' | 'exit';
+  gateStation: string;
+  recordedBy: string;
+  recordedAt: string;
 }
 
 export interface SocietyProfile {

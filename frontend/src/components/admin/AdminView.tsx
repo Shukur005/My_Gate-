@@ -43,6 +43,20 @@ import {
   Edit,
   Mail,
   Phone,
+  Tag,
+  MapPin,
+  IndianRupee,
+  UsersRound,
+  Image,
+  Timer,
+  LayoutGrid,
+  House,
+  CalendarDays,
+  FileBadge,
+  Droplet,
+  CarFront,
+  CirclePlus,
+  Info,
 } from 'lucide-react';
 
 export const AdminView: React.FC = () => {
@@ -114,6 +128,7 @@ export const AdminView: React.FC = () => {
     upiId: '',
   });
   const [bankDetailsNotice, setBankDetailsNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isEditingBankDetails, setIsEditingBankDetails] = useState(false);
   const [amenityBookingNotice, setAmenityBookingNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [rejectingBookingId, setRejectingBookingId] = useState<string | null>(null);
   const [rejectionReasonCategory, setRejectionReasonCategory] = useState('');
@@ -132,6 +147,7 @@ export const AdminView: React.FC = () => {
       accountType: saved?.accountType || 'Savings',
       upiId: saved?.upiId || '',
     });
+    setIsEditingBankDetails(!saved);
   }, [currentSocietyName, selectedBankSociety?.bankDetails]);
 
   useEffect(() => {
@@ -146,6 +162,25 @@ export const AdminView: React.FC = () => {
     }
     const result = updateSocietyBankDetails(selectedBankSociety.id, bankDetails);
     setBankDetailsNotice({ type: result.success ? 'success' : 'error', message: result.message });
+    if (result.success) setIsEditingBankDetails(false);
+  };
+
+  const handleCancelBankDetailsEdit = () => {
+    const saved = selectedBankSociety?.bankDetails;
+    if (saved) {
+      setBankDetails({
+        accountHolderName: saved.accountHolderName,
+        accountNumber: saved.accountNumber,
+        bankName: saved.bankName,
+        ifscCode: saved.ifscCode,
+        branchName: saved.branchName,
+        bankAddress: saved.bankAddress,
+        accountType: saved.accountType,
+        upiId: saved.upiId || '',
+      });
+    }
+    setBankDetailsNotice(null);
+    setIsEditingBankDetails(false);
   };
 
   const handleAmenityBookingDecision = (bookingId: string, decision: 'approve' | 'reject') => {
@@ -201,6 +236,13 @@ export const AdminView: React.FC = () => {
   const [billOwner, setBillOwner] = useState('');
   const [billMonth, setBillMonth] = useState('September 2026');
   const [billDueDate, setBillDueDate] = useState('2026-09-10');
+  const [billInvoiceDate, setBillInvoiceDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  });
+  const [billType, setBillType] = useState('Maintenance');
+  const [billStatus, setBillStatus] = useState<'pending' | 'overdue'>('pending');
+  const [billNotes, setBillNotes] = useState('');
   const [baseMaint, setBaseMaint] = useState(3500);
   const [waterChg, setWaterChg] = useState(450);
   const [parkingChg, setParkingChg] = useState(500);
@@ -279,7 +321,9 @@ export const AdminView: React.FC = () => {
   const [amenityCapacity, setAmenityCapacity] = useState(10);
   const [amenityDescription, setAmenityDescription] = useState('');
   const [amenityImage, setAmenityImage] = useState('');
-  const [amenitySlots, setAmenitySlots] = useState('09:00 - 10:00');
+  const [amenitySlots, setAmenitySlots] = useState<string[]>(['09:00 - 10:00']);
+  const [customSlotStart, setCustomSlotStart] = useState('22:00');
+  const [customSlotEnd, setCustomSlotEnd] = useState('23:00');
   const [amenityActive, setAmenityActive] = useState(true);
 
   // Cancellation Charges matching user screenshot
@@ -392,13 +436,18 @@ export const AdminView: React.FC = () => {
       flatNumber: billFlat,
       ownerName,
       monthYear: billMonth,
+      invoiceDate: billInvoiceDate,
+      invoiceType: billType,
+      notes: billNotes.trim(),
       dueDate: billDueDate,
       baseMaintenance: Number(baseMaint),
       waterCharges: Number(waterChg),
       parkingCharges: Number(parkingChg),
-      clubhouseFee: Number(clubChg),
+      clubhouseFee: 0,
+      otherCharges: Number(clubChg),
       lateFee: 0,
       totalAmount: total,
+      status: billStatus,
     });
     setShowCreateBill(false);
   };
@@ -520,7 +569,9 @@ export const AdminView: React.FC = () => {
     setAmenityCapacity(amenity?.maxCapacity || 10);
     setAmenityDescription(amenity?.description || '');
     setAmenityImage(amenity?.image || '');
-    setAmenitySlots(amenity?.availableSlots.join(', ') || '09:00 - 10:00');
+    setAmenitySlots(amenity?.availableSlots || ['09:00 - 10:00']);
+    setCustomSlotStart('22:00');
+    setCustomSlotEnd('23:00');
     setAmenityActive(amenity?.isActive !== false);
     setShowAmenityForm(true);
   };
@@ -534,7 +585,7 @@ export const AdminView: React.FC = () => {
       hourlyRate: amenityRate,
       maxCapacity: amenityCapacity,
       image: amenityImage.trim(),
-      availableSlots: amenitySlots.split(',').map((slot) => slot.trim()).filter(Boolean),
+      availableSlots: amenitySlots,
       description: amenityDescription.trim(),
       isActive: amenityActive,
     };
@@ -1343,6 +1394,7 @@ export const AdminView: React.FC = () => {
               </div>
 
               {selectedBankSociety ? (
+                isEditingBankDetails ? (
                 <form className="space-y-5 p-5 sm:p-6" onSubmit={handleSaveBankDetails}>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <label className="text-xs font-semibold text-slate-700">
@@ -1394,9 +1446,67 @@ export const AdminView: React.FC = () => {
                       <button className="shrink-0 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800" type="submit">
                         Save bank details
                       </button>
+                      {selectedBankSociety.bankDetails && (
+                        <button className="shrink-0 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={handleCancelBankDetailsEdit} type="button">
+                          Cancel
+                        </button>
+                      )}
                     </div>
                   </div>
                 </form>
+                ) : (
+                  <div className="space-y-5 p-5 sm:p-6">
+                    <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <div>
+                        <dt className="text-xs font-semibold text-slate-500">Account holder name</dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-900">{bankDetails.accountHolderName}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-semibold text-slate-500">Account number</dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-900">{bankDetails.accountNumber}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-semibold text-slate-500">Bank name</dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-900">{bankDetails.bankName}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-semibold text-slate-500">IFSC code</dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-900">{bankDetails.ifscCode}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-semibold text-slate-500">Branch name</dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-900">{bankDetails.branchName}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-semibold text-slate-500">Account type</dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-900">{bankDetails.accountType}</dd>
+                      </div>
+                      <div className="sm:col-span-2 lg:col-span-3">
+                        <dt className="text-xs font-semibold text-slate-500">Bank branch address</dt>
+                        <dd className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-900">{bankDetails.bankAddress}</dd>
+                      </div>
+                      <div className="sm:col-span-2 lg:col-span-3">
+                        <dt className="text-xs font-semibold text-slate-500">Society UPI ID</dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-900">{bankDetails.upiId || 'Not provided'}</dd>
+                      </div>
+                    </dl>
+                    <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="max-w-2xl text-xs leading-relaxed text-amber-800">
+                          Bank details are stored in this browser’s local storage in this prototype. Use a secured server-side system before storing real account information.
+                        </p>
+                        {bankDetailsNotice && (
+                          <p role="status" className="mt-2 text-xs font-semibold text-emerald-700">
+                            {bankDetailsNotice.message}
+                          </p>
+                        )}
+                      </div>
+                      <button className="shrink-0 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800" onClick={() => { setBankDetailsNotice(null); setIsEditingBankDetails(true); }} type="button">
+                        Edit bank details
+                      </button>
+                    </div>
+                  </div>
+                )
               ) : (
                 <p className="p-6 text-sm text-slate-500">No societies are available to configure.</p>
               )}
@@ -1926,56 +2036,124 @@ export const AdminView: React.FC = () => {
       })()}
 
       {showAmenityForm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <section role="dialog" aria-modal="true" aria-labelledby="amenity-form-title" className="w-full max-w-xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200">
-            <header className="p-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 id="amenity-form-title" className="text-sm font-bold">{editingAmenityId ? 'Edit Amenity' : 'Add New Amenity'}</h3>
-              <button type="button" aria-label="Close amenity form" onClick={() => setShowAmenityForm(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
+          <section role="dialog" aria-modal="true" aria-labelledby="amenity-form-title" className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="sticky top-0 z-10 flex items-center justify-between bg-[#102b49] px-5 py-3.5 text-white sm:px-7">
+              <div className="flex items-center gap-3">
+                <span className="rounded-lg bg-emerald-500/15 p-2 text-emerald-400"><Building2 className="h-5 w-5" /></span>
+                <div>
+                  <h3 id="amenity-form-title" className="text-base font-bold">{editingAmenityId ? 'Edit Amenity' : 'Add New Amenity'}</h3>
+                  <p className="mt-0.5 text-[11px] text-slate-300">{editingAmenityId ? 'Update amenity details and booking availability' : 'Create a new amenity for your gated community'}</p>
+                </div>
+              </div>
+              <button type="button" aria-label="Close amenity form" onClick={() => setShowAmenityForm(false)} className="rounded-lg p-1 text-slate-300 transition hover:bg-white/10 hover:text-white">
+                <X className="h-5 w-5" />
               </button>
             </header>
-            <form onSubmit={handleSaveAmenity} className="p-5 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveAmenity} className="space-y-4 px-5 py-5 text-xs sm:px-7">
+              <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Amenity Name *</label>
-                  <input value={amenityName} onChange={(event) => setAmenityName(event.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2" />
+                  <label htmlFor="amenity-name" className="mb-1.5 flex items-center gap-2 font-bold text-slate-700"><Tag className="h-3.5 w-3.5" /> Amenity Name *</label>
+                  <input id="amenity-name" value={amenityName} onChange={(event) => setAmenityName(event.target.value)} required maxLength={100} placeholder="e.g. Swimming Pool, Gym, Club House" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Category *</label>
-                  <input value={amenityCategory} onChange={(event) => setAmenityCategory(event.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2" />
+                  <label htmlFor="amenity-category" className="mb-1.5 flex items-center gap-2 font-bold text-slate-700"><LayoutGrid className="h-3.5 w-3.5" /> Category *</label>
+                  <select id="amenity-category" value={amenityCategory} onChange={(event) => setAmenityCategory(event.target.value)} required className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
+                    {['Recreation', 'Fitness', 'Sports', 'Utilities', 'Community'].map((category) => <option key={category} value={category}>{category}</option>)}
+                  </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Location *</label>
-                  <input value={amenityLocation} onChange={(event) => setAmenityLocation(event.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2" />
+                  <label htmlFor="amenity-location" className="mb-1.5 flex items-center gap-2 font-bold text-slate-700"><MapPin className="h-3.5 w-3.5" /> Location *</label>
+                  <input id="amenity-location" value={amenityLocation} onChange={(event) => setAmenityLocation(event.target.value)} required maxLength={120} placeholder="e.g. Club House, Block A, 1st Floor" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Hourly Rate (₹)</label>
-                  <input type="number" min="0" step="0.01" value={amenityRate} onChange={(event) => setAmenityRate(Number(event.target.value))} required className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2" />
+                  <label htmlFor="amenity-rate" className="mb-1.5 flex items-center gap-2 font-bold text-slate-700"><IndianRupee className="h-3.5 w-3.5" /> Hourly Rate (₹)</label>
+                  <input id="amenity-rate" type="number" min="0" step="0.01" value={amenityRate} onChange={(event) => setAmenityRate(Number(event.target.value))} required className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Maximum Capacity *</label>
-                  <input type="number" min="1" step="1" value={amenityCapacity} onChange={(event) => setAmenityCapacity(Number(event.target.value))} required className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2" />
+                  <label htmlFor="amenity-capacity" className="mb-1.5 flex items-center gap-2 font-bold text-slate-700"><UsersRound className="h-3.5 w-3.5" /> Maximum Capacity *</label>
+                  <input id="amenity-capacity" type="number" min="1" step="1" value={amenityCapacity} onChange={(event) => setAmenityCapacity(Number(event.target.value))} required className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Available Slots *</label>
-                  <input value={amenitySlots} onChange={(event) => setAmenitySlots(event.target.value)} required placeholder="Comma-separated time slots" className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2" />
+
+                <fieldset className="sm:col-span-2">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <legend className="flex items-center gap-2 font-bold text-slate-700"><Timer className="h-3.5 w-3.5" /> Available Time Slots *</legend>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <label htmlFor="amenity-custom-start" className="sr-only">Custom slot start time</label>
+                      <input id="amenity-custom-start" type="time" value={customSlotStart} onChange={(event) => setCustomSlotStart(event.target.value)} className="rounded-md border border-slate-200 px-1.5 py-1" />
+                      <span className="text-slate-400">to</span>
+                      <label htmlFor="amenity-custom-end" className="sr-only">Custom slot end time</label>
+                      <input id="amenity-custom-end" type="time" value={customSlotEnd} onChange={(event) => setCustomSlotEnd(event.target.value)} className="rounded-md border border-slate-200 px-1.5 py-1" />
+                      <button
+                        type="button"
+                        disabled={customSlotEnd <= customSlotStart}
+                        onClick={() => {
+                          const slot = `${customSlotStart} - ${customSlotEnd}`;
+                          if (!amenitySlots.includes(slot)) setAmenitySlots((slots) => [...slots, slot].sort());
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2.5 py-1.5 font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Plus className="h-3 w-3" /> Add custom slot
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mb-2 text-[10px] text-slate-500">Select all available booking times</p>
+                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-sky-100 bg-sky-50/60 p-3 sm:grid-cols-4">
+                    {Array.from({ length: 16 }, (_, index) => {
+                      const startHour = index + 6;
+                      const endHour = startHour + 1;
+                      const formatHour = (hour: number) => `${String(hour % 24).padStart(2, '0')}:00`;
+                      const slot = `${formatHour(startHour)} - ${formatHour(endHour)}`;
+                      const isSelected = amenitySlots.includes(slot);
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => setAmenitySlots((slots) => isSelected ? slots.filter((item) => item !== slot) : [...slots, slot].sort())}
+                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-[11px] font-semibold transition ${
+                            isSelected ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'
+                          }`}
+                        >
+                          {slot}
+                          {isSelected && <CheckCircle2 className="h-3.5 w-3.5" />}
+                        </button>
+                      );
+                    })}
+                    {amenitySlots.filter((slot) => !Array.from({ length: 16 }, (_, index) => `${String(index + 6).padStart(2, '0')}:00 - ${String(index + 7).padStart(2, '0')}:00`).includes(slot)).map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        aria-pressed="true"
+                        onClick={() => setAmenitySlots((slots) => slots.filter((item) => item !== slot))}
+                        className="flex items-center justify-between rounded-lg border border-emerald-500 bg-emerald-50 px-3 py-2 text-left text-[11px] font-semibold text-emerald-800"
+                      >
+                        {slot}<CheckCircle2 className="h-3.5 w-3.5" />
+                      </button>
+                    ))}
+                  </div>
+                  {amenitySlots.length === 0 && <p className="mt-1.5 text-[11px] font-semibold text-rose-600">Select at least one available time slot.</p>}
+                </fieldset>
+
+                <div className="sm:col-span-2">
+                  <label htmlFor="amenity-image" className="mb-1.5 flex items-center gap-2 font-bold text-slate-700"><Image className="h-3.5 w-3.5" /> Image URL</label>
+                  <input id="amenity-image" type="url" value={amenityImage} onChange={(event) => setAmenityImage(event.target.value)} placeholder="https://example.com/amenity-image.jpg" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
                 </div>
-              </div>
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Image URL</label>
-                <input type="url" value={amenityImage} onChange={(event) => setAmenityImage(event.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2" />
-              </div>
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Description *</label>
-                <textarea rows={3} value={amenityDescription} onChange={(event) => setAmenityDescription(event.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2" />
+                <div className="sm:col-span-2">
+                  <label htmlFor="amenity-description" className="mb-1.5 flex items-center gap-2 font-bold text-slate-700"><FileText className="h-3.5 w-3.5" /> Description *</label>
+                  <textarea id="amenity-description" rows={3} maxLength={500} value={amenityDescription} onChange={(event) => setAmenityDescription(event.target.value)} required placeholder="Enter a brief description of the amenity, features, rules, etc..." className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+                  <p className="mt-1 text-right text-[10px] text-slate-400">{amenityDescription.length}/500</p>
+                </div>
               </div>
               <label className="flex items-center gap-2 font-semibold text-slate-700">
-                <input type="checkbox" checked={amenityActive} onChange={(event) => setAmenityActive(event.target.checked)} />
+                <input type="checkbox" checked={amenityActive} onChange={(event) => setAmenityActive(event.target.checked)} className="h-4 w-4 accent-emerald-600" />
                 Available for resident bookings
               </label>
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <button type="button" onClick={() => setShowAmenityForm(false)} className="px-4 py-2 border border-slate-200 rounded-lg font-bold text-slate-600">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold">{editingAmenityId ? 'Save Changes' : 'Create Amenity'}</button>
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                <button type="button" onClick={() => setShowAmenityForm(false)} className="rounded-lg border border-slate-200 px-4 py-2 font-bold text-slate-600 transition hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={amenitySlots.length === 0} className="rounded-lg bg-emerald-700 px-4 py-2 font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
+                  <span className="inline-flex items-center gap-1.5"><Plus className="h-3.5 w-3.5" />{editingAmenityId ? 'Save Changes' : 'Create Amenity'}</span>
+                </button>
               </div>
             </form>
           </section>
@@ -2216,81 +2394,126 @@ export const AdminView: React.FC = () => {
 
       {/* Existing Modals: Bill Creation */}
       {showCreateBill && (
-        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold">Issue Maintenance Invoice</h3>
-              <button onClick={() => setShowCreateBill(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5 animate-fade-in">
+          <section role="dialog" aria-modal="true" aria-labelledby="issue-invoice-title" className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="sticky top-0 z-10 flex items-center justify-between bg-[#102b49] px-5 py-4 text-white sm:px-7">
+              <div className="flex items-center gap-3">
+                <span className="rounded-xl bg-emerald-500/15 p-2.5 text-emerald-300"><Receipt className="h-7 w-7" /></span>
+                <div>
+                  <h3 id="issue-invoice-title" className="text-base font-extrabold">Issue Maintenance Invoice</h3>
+                  <p className="mt-1 text-[11px] text-slate-300">Create a maintenance invoice for the selected flat unit</p>
+                </div>
+              </div>
+              <button type="button" aria-label="Close invoice form" onClick={() => setShowCreateBill(false)} className="rounded-lg p-1.5 text-slate-300 transition hover:bg-white/10 hover:text-white">
+                <X className="h-5 w-5" />
               </button>
-            </div>
-            <form onSubmit={handleCreateBillSubmit} className="p-5 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Flat Unit</label>
-                  <select
-                    value={billFlat}
-                    onChange={(e) => setBillFlat(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs"
-                  >
-                    {societyFlats.length === 0 && <option value="">No flats in this society</option>}
-                    {societyFlats.map((f) => (
-                      <option key={f.flatNumber} value={f.flatNumber}>
-                        {f.flatNumber} ({f.ownerName})
-                      </option>
-                    ))}
-                  </select>
+            </header>
+            <form onSubmit={handleCreateBillSubmit} className="space-y-3.5 p-4 sm:p-5">
+              <section className="rounded-xl border border-sky-100 bg-gradient-to-br from-sky-50/80 to-white p-4 sm:p-5">
+                <div className="mb-4 flex items-center gap-3">
+                  <House className="h-6 w-6 text-slate-700" />
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">Property Details</h4>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Select the flat unit and enter billing information</p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Billing Month</label>
-                  <input
-                    type="text"
-                    value={billMonth}
-                    onChange={(e) => setBillMonth(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs"
-                  />
+                <div className="grid gap-x-5 gap-y-4 md:grid-cols-3">
+                  <div>
+                    <label htmlFor="bill-flat" className="mb-1.5 block font-bold text-slate-700">Flat Unit <span className="text-rose-600">*</span></label>
+                    <select id="bill-flat" value={billFlat} onChange={(event) => setBillFlat(event.target.value)} required disabled={societyFlats.length === 0} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100">
+                      {societyFlats.length === 0 && <option value="">No flats in this society</option>}
+                      {societyFlats.map((flat) => <option key={flat.flatNumber} value={flat.flatNumber}>{flat.flatNumber} ({flat.ownerName})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="bill-month" className="mb-1.5 block font-bold text-slate-700">Billing Month <span className="text-rose-600">*</span></label>
+                    <input id="bill-month" type="month" value={(() => {
+                      const parsedMonth = new Date(`${billMonth} 1`);
+                      return Number.isNaN(parsedMonth.getTime()) ? '' : `${parsedMonth.getFullYear()}-${String(parsedMonth.getMonth() + 1).padStart(2, '0')}`;
+                    })()} onChange={(event) => {
+                      if (!event.target.value) return;
+                      const [year, month] = event.target.value.split('-').map(Number);
+                      setBillMonth(new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+                    }} required className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" />
+                  </div>
+                  <div>
+                    <label htmlFor="bill-invoice-date" className="mb-1.5 block font-bold text-slate-700">Invoice Date <span className="text-rose-600">*</span></label>
+                    <input id="bill-invoice-date" type="date" value={billInvoiceDate} onChange={(event) => setBillInvoiceDate(event.target.value)} required className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" />
+                  </div>
+                  <div>
+                    <label htmlFor="bill-type" className="mb-1.5 block font-bold text-slate-700">Invoice Type <span className="text-rose-600">*</span></label>
+                    <select id="bill-type" value={billType} onChange={(event) => setBillType(event.target.value)} required className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100">
+                      <option value="Maintenance">Maintenance</option>
+                      <option value="Special Assessment">Special Assessment</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="bill-status" className="mb-1.5 block font-bold text-slate-700">Status <span className="text-rose-600">*</span></label>
+                    <select id="bill-status" value={billStatus} onChange={(event) => setBillStatus(event.target.value as 'pending' | 'overdue')} className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
+                      <option value="pending">Pending</option>
+                      <option value="overdue">Overdue</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="bill-due-date" className="mb-1.5 block font-bold text-slate-700">Payment Due Date</label>
+                    <input id="bill-due-date" type="date" value={billDueDate} onChange={(event) => setBillDueDate(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" />
+                  </div>
                 </div>
-              </div>
+              </section>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Base Maintenance (₹)</label>
-                  <input
-                    type="number"
-                    value={baseMaint}
-                    onChange={(e) => setBaseMaint(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs"
-                  />
+              <section className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/70 to-white p-4 sm:p-5">
+                <div className="mb-4 flex items-center gap-3">
+                  <CircleDollarSign className="h-6 w-6 text-emerald-700" />
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">Charges &amp; Amounts</h4>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Enter the maintenance and other applicable charges</p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Water Charges (₹)</label>
-                  <input
-                    type="number"
-                    value={waterChg}
-                    onChange={(e) => setWaterChg(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs"
-                  />
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    { id: 'base-maintenance', label: 'Base Maintenance (₹)', value: baseMaint, setter: setBaseMaint, required: true, Icon: CircleDollarSign },
+                    { id: 'water-charges', label: 'Water Charges (₹)', value: waterChg, setter: setWaterChg, required: true, Icon: Droplet },
+                    { id: 'parking-charges', label: 'Parking Charges (₹)', value: parkingChg, setter: setParkingChg, required: false, Icon: CarFront },
+                    { id: 'other-charges', label: 'Other Charges (₹)', value: clubChg, setter: setClubChg, required: false, Icon: CirclePlus },
+                  ].map(({ id, label, value, setter, required, Icon }) => (
+                    <div key={id}>
+                      <label htmlFor={id} className="mb-1.5 block font-bold text-slate-700">{label}{required && <span className="ml-1 text-rose-600">*</span>}</label>
+                      <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100">
+                        <span className="border-r border-slate-100 bg-slate-50 px-2.5 py-2.5 text-slate-500"><Icon className="h-3.5 w-3.5" /></span>
+                        <input id={id} type="number" min="0" step="0.01" value={value} onChange={(event) => setter(Number(event.target.value))} required={required} placeholder={required ? '0' : 'Enter amount (optional)'} className="min-w-0 flex-1 bg-transparent px-2.5 py-2.5 text-xs outline-none" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              </section>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateBill(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg font-bold text-slate-600"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={societyFlats.length === 0}
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Issue Bill
-                </button>
-              </div>
+              <section className="rounded-xl border border-sky-100 bg-gradient-to-br from-sky-50/70 to-white p-4 sm:p-5">
+                <div className="mb-3 flex items-center gap-3">
+                  <FileText className="h-6 w-6 text-slate-700" />
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">Additional Information</h4>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Add any notes or remarks for this invoice</p>
+                  </div>
+                </div>
+                <label htmlFor="bill-notes" className="sr-only">Invoice notes</label>
+                <textarea id="bill-notes" rows={3} maxLength={500} value={billNotes} onChange={(event) => setBillNotes(event.target.value)} placeholder="e.g. Late fee applicable, maintenance details, etc..." className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" />
+                <p className="mt-1 text-right text-[10px] text-slate-400">{billNotes.length}/500</p>
+              </section>
+
+              <footer className="flex flex-col-reverse items-stretch justify-between gap-3 px-1 pt-1 sm:flex-row sm:items-center">
+                <p className="flex items-center gap-2 rounded-lg border border-teal-100 bg-teal-50 px-3 py-2.5 text-[11px] text-teal-700">
+                  <Info className="h-4 w-4 shrink-0" />
+                  This invoice will be saved and can be viewed in the invoice history.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setShowCreateBill(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 font-bold text-slate-600 transition hover:bg-slate-50">Cancel</button>
+                  <button type="submit" disabled={societyFlats.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                    <Receipt className="h-4 w-4" /> Issue Invoice
+                  </button>
+                </div>
+              </footer>
             </form>
-          </div>
+          </section>
         </div>
       )}
 
@@ -2431,19 +2654,29 @@ export const AdminView: React.FC = () => {
               <dl className="grid grid-cols-2 gap-4">
                 <div><dt className="text-xs text-slate-500">Resident</dt><dd className="mt-1 font-semibold">{selectedBill.ownerName}</dd></div>
                 <div><dt className="text-xs text-slate-500">Billing Month</dt><dd className="mt-1 font-semibold">{selectedBill.monthYear}</dd></div>
+                {selectedBill.invoiceType && <div><dt className="text-xs text-slate-500">Invoice Type</dt><dd className="mt-1 font-semibold">{selectedBill.invoiceType}</dd></div>}
+                {selectedBill.invoiceDate && <div><dt className="text-xs text-slate-500">Invoice Date</dt><dd className="mt-1 font-semibold">{selectedBill.invoiceDate}</dd></div>}
                 <div><dt className="text-xs text-slate-500">Due Date</dt><dd className="mt-1 font-semibold">{selectedBill.dueDate}</dd></div>
                 <div>
                   <dt className="text-xs text-slate-500">Status</dt>
                   <dd className="mt-1 font-semibold capitalize">{selectedBill.status}</dd>
                 </div>
               </dl>
+              {selectedBill.notes && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <h4 className="text-xs font-bold text-slate-700">Additional Information</h4>
+                  <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600">{selectedBill.notes}</p>
+                </div>
+              )}
               <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 font-bold text-slate-800">Charges</div>
                 {[
                   ['Base maintenance', selectedBill.baseMaintenance],
                   ['Water charges', selectedBill.waterCharges],
                   ['Parking charges', selectedBill.parkingCharges],
-                  ['Clubhouse fee', selectedBill.clubhouseFee],
+                  ...(selectedBill.otherCharges !== undefined
+                    ? [['Other charges', selectedBill.otherCharges] as [string, number]]
+                    : [['Clubhouse fee', selectedBill.clubhouseFee] as [string, number]]),
                   ['Late fee', selectedBill.lateFee],
                 ].map(([label, amount]) => (
                   <div key={label} className="flex justify-between gap-4 px-4 py-3 border-t border-slate-100">

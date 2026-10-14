@@ -175,7 +175,7 @@ export const SidebarPanel: React.FC = () => {
     },
     {
       id: 'community',
-      label: 'People Hub',
+      label: role === 'guard' ? 'Security Hub' : 'People Hub',
       category: 'People',
       icon: (active) => <Users className={`w-5 h-5 transition-colors ${active ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`} strokeWidth={1.8} />,
     },
