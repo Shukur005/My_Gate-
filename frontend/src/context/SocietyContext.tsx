@@ -31,6 +31,7 @@ import {
   SidebarNavId,
   SocietyProfile,
   SocietyBankDetails,
+  ResidentVehicleMovement,
 } from '../types';
 import {
   DEFAULT_SOCIETY_NAME,
@@ -156,6 +157,13 @@ interface SocietyContextType {
   };
   updateApartmentAddress: (flatNumber: string, propertyAddress: string, societyName?: string) => { success: boolean; message: string };
   markFlatVacant: (flatNumber: string, societyName?: string) => { success: boolean; message: string };
+  residentVehicleMovements: ResidentVehicleMovement[];
+  recordResidentVehicleMovement: (data: {
+    flatNumber: string;
+    vehicleNumber: string;
+    direction: ResidentVehicleMovement['direction'];
+    gateStation?: string;
+  }) => { success: boolean; message: string };
   visitors: VisitorPass[];
   domesticWorkerPasses: DomesticWorkerPass[];
   createDomesticWorkerPass: (data: {
@@ -319,9 +327,14 @@ interface SocietyContextType {
     }
   ) => { success: boolean; message: string };
   deleteFlat: (flatNumber: string) => void;
+  payDuesAndMarkFlatVacant: (
+    flatNumber: string,
+    societyName: string | undefined,
+    paymentMethod: BillPaymentMethod
+  ) => { success: boolean; message: string };
 
   payBill: (billId: string, paymentMethod: BillPaymentMethod) => void;
-  createBill: (data: Omit<MaintenanceBill, 'id' | 'status'>) => void;
+  createBill: (data: Omit<MaintenanceBill, 'id' | 'status'> & { status?: MaintenanceBill['status'] }) => void;
 
   addExpense: (data: Omit<SocietyExpense, 'id'>) => void;
 
@@ -451,6 +464,11 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
   });
 
+  const [residentVehicleMovements, setResidentVehicleMovements] = useState<ResidentVehicleMovement[]>(() => {
+    const saved = localStorage.getItem('mygate_resident_vehicle_movements');
+    return saved ? JSON.parse(saved) as ResidentVehicleMovement[] : [];
+  });
+
   const [domesticWorkerPasses, setDomesticWorkerPasses] = useState<DomesticWorkerPass[]>(() => {
     const saved = localStorage.getItem('mygate_domestic_worker_passes');
     return saved ? JSON.parse(saved) : [];
@@ -558,6 +576,10 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     localStorage.setItem('mygate_visitors', JSON.stringify(visitors));
   }, [visitors]);
+
+  useEffect(() => {
+    localStorage.setItem('mygate_resident_vehicle_movements', JSON.stringify(residentVehicleMovements));
+  }, [residentVehicleMovements]);
 
   useEffect(() => {
     localStorage.setItem('mygate_domestic_worker_passes', JSON.stringify(domesticWorkerPasses));
@@ -1286,7 +1308,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const checkOutVisitor = (visitorId: string) => {
     const updatedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setVisitors((prev) =>
-      prev.map((v) => (v.id === visitorId ? { ...v, status: 'checked_out', checkOutTime: updatedTime } : v))
+      prev.map((v) => (v.id === visitorId && v.status === 'in_gate' ? { ...v, status: 'checked_out', checkOutTime: updatedTime } : v))
     );
   };
 
@@ -1294,7 +1316,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const updatedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setVisitors((prev) =>
       prev.map((v) =>
-        v.id === visitorId
+        v.id === visitorId && v.status !== 'checked_out'
           ? {
               ...v,
               status: 'in_gate',
@@ -1312,7 +1334,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const denyPendingVisitor = (visitorId: string) => {
     setVisitors((prev) =>
-      prev.map((v) => (v.id === visitorId ? { ...v, status: 'denied', approvedByResident: false } : v))
+      prev.map((v) => (v.id === visitorId && v.status !== 'checked_out' ? { ...v, status: 'denied', approvedByResident: false } : v))
     );
     if (incomingCall && incomingCall.visitor.id === visitorId) {
       setIncomingCall(null);
@@ -1324,6 +1346,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setVisitors((prev) =>
       prev.map((v) => {
         if (v.id === visitorId) {
+          if (v.status === 'checked_out') return v;
           const isApproved = status === 'in_gate';
           return {
             ...v,
@@ -1604,6 +1627,14 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (apartment.occupancyStatus === 'Vacant') {
       return { success: false, message: `Apartment ${flatNumber} is already vacant.` };
     }
+    const unpaidBills = bills.filter((bill) =>
+      bill.flatNumber === flatNumber &&
+      (!societyName || bill.societyName === societyName) &&
+      bill.status !== 'paid'
+    );
+    if (apartment.outstandingDues > 0 || unpaidBills.length > 0) {
+      return { success: false, message: 'Outstanding maintenance dues must be paid before this apartment can be marked vacant.' };
+    }
 
     setFlats((prev) =>
       prev.map((flat) =>
@@ -1633,6 +1664,120 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
       )
     );
     return { success: true, message: `Apartment ${flatNumber} is now marked vacant.` };
+  };
+
+  const payDuesAndMarkFlatVacant = (
+    flatNumber: string,
+    societyName: string | undefined,
+    paymentMethod: BillPaymentMethod
+  ) => {
+    const apartment = flats.find((flat) => flat.flatNumber === flatNumber && (!societyName || flat.societyName === societyName));
+    if (!apartment) return { success: false, message: `Apartment ${flatNumber} was not found.` };
+    if (apartment.occupancyStatus === 'Vacant') {
+      return { success: false, message: `Apartment ${flatNumber} is already vacant.` };
+    }
+
+    const unpaidBills = bills.filter((bill) =>
+      bill.flatNumber === flatNumber &&
+      (!societyName || bill.societyName === societyName) &&
+      bill.status !== 'paid'
+    );
+    const billDues = unpaidBills.reduce((total, bill) => total + bill.totalAmount, 0);
+    const totalDues = Math.max(apartment.outstandingDues, billDues);
+    const today = new Date().toISOString().slice(0, 10);
+    const transactionRef = `${paymentMethod}-${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+
+    if (totalDues > 0) {
+      setBills((previous) => previous.map((bill) => (
+        unpaidBills.some((unpaidBill) => unpaidBill.id === bill.id)
+          ? { ...bill, status: 'paid', paidDate: today, paymentMethod, transactionRef }
+          : bill
+      )));
+    }
+    setFlats((previous) => previous.map((flat) => (
+      flat.flatNumber === flatNumber && (!societyName || flat.societyName === societyName)
+        ? {
+            ...flat,
+            ownerName: '',
+            occupancyStatus: 'Vacant',
+            phone: '',
+            email: '',
+            vehicles: [],
+            familyMembersCount: 0,
+            emergencyContacts: [],
+            profileDetails: undefined,
+            outstandingDues: 0,
+          }
+        : flat
+    )));
+    setUsers((previous) => previous.map((user) => (
+      user.role === 'resident' &&
+      user.flatNumber === flatNumber &&
+      (user.societyName === apartment.societyName ||
+        (!user.societyName && apartment.societyName === DEFAULT_SOCIETY_NAME))
+        ? { ...user, flatNumber: undefined, wing: undefined, occupancyStatus: undefined, familyMembersCount: undefined, vehicleNumber: undefined }
+        : user
+    )));
+    return {
+      success: true,
+      message: totalDues > 0
+        ? `₹${totalDues.toLocaleString('en-IN')} dues recorded as paid by ${paymentMethod}; apartment ${flatNumber} is now vacant.`
+        : `Apartment ${flatNumber} is now marked vacant. No outstanding dues were found.`,
+    };
+  };
+
+  const recordResidentVehicleMovement = (data: {
+    flatNumber: string;
+    vehicleNumber: string;
+    direction: ResidentVehicleMovement['direction'];
+    gateStation?: string;
+  }) => {
+    if (role !== 'guard') {
+      return { success: false, message: 'Only a gate guard can record resident vehicle movements.' };
+    }
+
+    const flat = flats.find((item) =>
+      item.flatNumber.toUpperCase() === data.flatNumber.trim().toUpperCase() &&
+      (item.societyName || DEFAULT_SOCIETY_NAME) === currentSocietyName
+    );
+    const normalizedVehicleNumber = data.vehicleNumber.replace(/\s/g, '').toUpperCase();
+    const vehicle = flat?.vehicles.find((item) => item.number.replace(/\s/g, '').toUpperCase() === normalizedVehicleNumber);
+    if (!flat || !vehicle) {
+      return { success: false, message: 'Select a registered resident vehicle for this society and apartment.' };
+    }
+
+    const previousMovement = residentVehicleMovements.find((movement) =>
+      movement.societyName === currentSocietyName &&
+      movement.flatNumber.toUpperCase() === flat.flatNumber.toUpperCase() &&
+      movement.vehicleNumber.replace(/\s/g, '').toUpperCase() === normalizedVehicleNumber
+    );
+    if (previousMovement?.direction === data.direction) {
+      const expectedAction = data.direction === 'entry' ? 'exit' : 'entry';
+      return {
+        success: false,
+        message: `This vehicle is already recorded as ${data.direction === 'entry' ? 'inside' : 'outside'}. Record ${expectedAction} next.`,
+      };
+    }
+
+    const movement: ResidentVehicleMovement = {
+      id: `vehicle-move-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      societyName: currentSocietyName,
+      flatNumber: flat.flatNumber,
+      residentName: flat.ownerName,
+      vehicleType: vehicle.type,
+      vehicleNumber: vehicle.number.trim().toUpperCase(),
+      makeModel: vehicle.makeModel,
+      color: vehicle.color,
+      direction: data.direction,
+      gateStation: data.gateStation?.trim() || 'Main Gate 1',
+      recordedBy: currentUser?.name || 'Gate Guard',
+      recordedAt: new Date().toISOString(),
+    };
+    setResidentVehicleMovements((previous) => [movement, ...previous]);
+    return {
+      success: true,
+      message: `Vehicle ${vehicle.number} ${data.direction === 'entry' ? 'entry' : 'exit'} recorded for Flat ${flat.flatNumber}.`,
+    };
   };
 
   const deleteFlat = (flatNumber: string) => {
@@ -1668,7 +1813,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
   };
 
-  const createBill = (data: Omit<MaintenanceBill, 'id' | 'status'>) => {
+  const createBill = (data: Omit<MaintenanceBill, 'id' | 'status'> & { status?: MaintenanceBill['status'] }) => {
     const newBill: MaintenanceBill = {
       ...data,
       societyName: data.societyName || flats.find((flat) =>
@@ -1676,7 +1821,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         flat.societyName === currentSocietyName
       )?.societyName || currentSocietyName,
       id: `BILL-${Date.now().toString().slice(-6)}`,
-      status: 'pending',
+      status: data.status || 'pending',
     };
     setBills((prev) => [newBill, ...prev]);
 
@@ -2864,6 +3009,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setCurrentSocietyName(DEFAULT_SOCIETY_NAME);
     setFlats(INITIAL_FLATS);
     setVisitors(INITIAL_VISITORS);
+    setResidentVehicleMovements([]);
     setDomesticWorkerPasses([]);
     setBills(INITIAL_BILLS);
     setExpenses(INITIAL_EXPENSES);
@@ -2912,6 +3058,8 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addApartment,
         updateApartmentAddress,
         markFlatVacant,
+        residentVehicleMovements,
+        recordResidentVehicleMovement,
         visitors,
         domesticWorkerPasses,
         createDomesticWorkerPass,
@@ -2957,6 +3105,7 @@ export const SocietyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addFlatWithMember,
         updateResidentProfile,
         deleteFlat,
+        payDuesAndMarkFlatVacant,
         payBill,
         createBill,
         addExpense,

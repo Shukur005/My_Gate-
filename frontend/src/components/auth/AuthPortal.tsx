@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useSociety } from '../../context/SocietyContext';
 import { UserRole } from '../../types';
+import communityPromoVideo from '../../assets/videos/community-promo.mp4';
 import {
   Home,
   Shield,
@@ -480,22 +481,31 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ initialPortal = 'residen
               className="relative z-10 mx-auto my-auto w-full max-w-[1400px] px-6 py-8 sm:px-12 lg:px-16 xl:px-20"
             >
               <div className="overflow-hidden rounded-3xl border border-white/50 bg-white/30 shadow-[0_24px_70px_-35px_rgba(9,43,29,0.55)] backdrop-blur-xl">
-                <div className="relative min-h-[260px] overflow-hidden sm:min-h-[320px]">
-                  <img
-                    src={bgBuildings}
-                    alt="Green Valley residences surrounded by landscaped gardens and a swimming pool"
-                    className="absolute inset-0 h-full w-full object-cover object-center"
+                <div className="relative min-h-[320px] overflow-hidden sm:min-h-[420px]">
+                  <video
+                    src={communityPromoVideo}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    controls
+                    aria-label="Green Valley community promotional video, playing in slow motion"
+                    onLoadedMetadata={(event) => {
+                      event.currentTarget.playbackRate = 0.7;
+                    }}
+                    className="absolute inset-0 h-full w-full bg-slate-950 object-cover object-center"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-r from-[#092d1e]/85 via-[#092d1e]/55 to-transparent" />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#092d1e]/85 via-[#092d1e]/45 to-transparent" />
                   <div className="relative max-w-2xl px-6 py-10 text-white sm:px-10 sm:py-14">
-                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-200">
-                      A place to belong
+                    <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-black/25 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.2em] text-emerald-100 backdrop-blur-sm">
+                      <Video className="h-4 w-4" />
+                      Green Valley · Community film
                     </p>
                     <h2 className="mt-3 font-serif text-4xl font-bold leading-tight sm:text-5xl">
-                      Discover Green Valley
+                      Find your place to belong
                     </h2>
                     <p className="mt-4 max-w-xl text-base leading-relaxed text-white/90 sm:text-lg">
-                      Thoughtfully planned homes, welcoming shared spaces, and a greener setting come together to make everyday living feel special.
+                      Discover the homes, green spaces, and shared moments that make life at Green Valley special.
                     </p>
                   </div>
                 </div>
